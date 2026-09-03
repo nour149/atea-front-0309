@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import API from '../services/api';
 import './Login.css';
 import ateaLogo from '../assets/atea-logo.jpg';
 
@@ -20,33 +21,15 @@ const Login = ({ onLoginSuccess }) => {
     
     try {
       if (authMode === 'login') {
-        const response = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: formData.email, password: formData.password }),
-        });
-        const data = await response.json();
+        const response = await API.post('/auth/login', { email: formData.email, password: formData.password });
+        const data = response.data;
         
-        if (!response.ok) {
-          const rawMsg = data.error || data.message || 'Erreur de connexion';
-          const errorMsg = (rawMsg.toLowerCase().includes('invalid email') || rawMsg.toLowerCase().includes('invalid password'))
-            ? 'Adresse email ou mot de passe invalide'
-            : rawMsg;
-          throw new Error(errorMsg);
-        }
-        
-        localStorage.setItem('user', JSON.stringify(data));
+        localStorage.setItem('user', JSON.stringify(data.user || data));
         if (data.token) localStorage.setItem('token', data.token);
-        onLoginSuccess(data);
+        onLoginSuccess(data.user || data);
 
       } else if (authMode === 'register') {
-        const response = await fetch('/api/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: formData.name, email: formData.email, password: formData.password }),
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || data.message || "Erreur d'inscription");
+        const response = await API.post('/auth/register', { name: formData.name, email: formData.email, password: formData.password });
         
         setAuthMode('login');
         setFormData({ name: '', email: '', code: '', password: '', newPassword: '' });
@@ -54,13 +37,7 @@ const Login = ({ onLoginSuccess }) => {
 
       } else if (authMode === 'reset') {
         if (resetStep === 1) {
-          const response = await fetch('/api/auth/send-reset-code', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: formData.email }),
-          });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.message || "Erreur lors de l'envoi du code.");
+          await API.post('/auth/send-reset-code', { email: formData.email });
 
           setResetStep(2);
           setSuccessMsg('Un code de vérification a été envoyé à votre adresse e-mail.');
@@ -71,13 +48,7 @@ const Login = ({ onLoginSuccess }) => {
           setResetStep(3);
           setSuccessMsg('Code accepté. Entrez votre nouveau mot de passe.');
         } else if (resetStep === 3) {
-          const response = await fetch('/api/auth/verify-and-reset', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: formData.email, code: formData.code, newPassword: formData.newPassword }),
-          });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.message || 'Erreur lors de la réinitialisation');
+          await API.post('/auth/verify-and-reset', { email: formData.email, code: formData.code, newPassword: formData.newPassword });
 
           setAuthMode('login');
           setResetStep(1);
@@ -86,7 +57,11 @@ const Login = ({ onLoginSuccess }) => {
         }
       }
     } catch (err) {
-      setError(err.message);
+      const rawMsg = err.response?.data?.error || err.response?.data?.message || err.message || 'Erreur de connexion';
+      const errorMsg = (rawMsg.toLowerCase().includes('invalid email') || rawMsg.toLowerCase().includes('invalid password'))
+        ? 'Adresse email ou mot de passe invalide'
+        : rawMsg;
+      setError(errorMsg);
     }
   };
 
