@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import API from '../services/api';
 import './Login.css';
 import ateaLogo from '../assets/atea-logo.jpg';
@@ -9,6 +9,15 @@ const Login = ({ onLoginSuccess }) => {
   const [formData, setFormData] = useState({ name: '', email: '', code: '', password: '', newPassword: '' });
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  const fetchData = useCallback(() => {
+    // Keep your data loading/initialization logic here if needed, 
+    // or leave it empty if it's a placeholder.
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -29,7 +38,7 @@ const Login = ({ onLoginSuccess }) => {
         onLoginSuccess(data.user || data);
 
       } else if (authMode === 'register') {
-        const response = await API.post('/auth/register', { name: formData.name, email: formData.email, password: formData.password });
+        await API.post('/auth/register', { name: formData.name, email: formData.email, password: formData.password });
         
         setAuthMode('login');
         setFormData({ name: '', email: '', code: '', password: '', newPassword: '' });
