@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const API = axios.create({
-  baseURL: 'http://localhost:5000/api',
+  baseURL: 'https://atea-back-0309.onrender.com/api',
 });
 
 // Automatically attach the user's token to requests if available
