@@ -1,70 +1,185 @@
 import React, { useState } from 'react';
-import API from '../services/api';
 import './Login.css';
 import ateaLogo from '../assets/atea-logo.jpg';
 
 const Login = ({ onLoginSuccess }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [authMode, setAuthMode] = useState('login'); // 'login', 'register', 'reset'
+  const [resetStep, setResetStep] = useState(1); // 1: Email, 2: Code, 3: Nouveau MDP
+  const [formData, setFormData] = useState({ name: '', email: '', code: '', password: '', newPassword: '' });
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [successMsg, setSuccessMsg] = useState('');
+
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
-
+    setSuccessMsg('');
+    
     try {
-      const response = await API.post('/auth/login', { email, password });
-      const { token, user } = response.data;
-      
-      localStorage.setItem('token', token);
-      onLoginSuccess(user);
+      if (authMode === 'login') {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: formData.email, password: formData.password }),
+        });
+        const data = await response.json();
+        
+        if (!response.ok) {
+          const rawMsg = data.error || data.message || 'Erreur de connexion';
+          const errorMsg = (rawMsg.toLowerCase().includes('invalid email') || rawMsg.toLowerCase().includes('invalid password'))
+            ? 'Adresse email ou mot de passe invalide'
+            : rawMsg;
+          throw new Error(errorMsg);
+        }
+        
+        localStorage.setItem('user', JSON.stringify(data));
+        if (data.token) localStorage.setItem('token', data.token);
+        onLoginSuccess(data);
+
+      } else if (authMode === 'register') {
+        const response = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: formData.name, email: formData.email, password: formData.password }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || data.message || "Erreur d'inscription");
+        
+        setAuthMode('login');
+        setFormData({ name: '', email: '', code: '', password: '', newPassword: '' });
+        alert('Compte créé avec succès ! Veuillez vous connecter.');
+
+      } else if (authMode === 'reset') {
+        if (resetStep === 1) {
+          const response = await fetch('/api/auth/send-reset-code', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: formData.email }),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.message || "Erreur lors de l'envoi du code.");
+
+          setResetStep(2);
+          setSuccessMsg('Un code de vérification a été envoyé à votre adresse e-mail.');
+        } else if (resetStep === 2) {
+          if (!formData.code || formData.code.length < 6) {
+            throw new Error("Veuillez entrer un code valide à 6 chiffres.");
+          }
+          setResetStep(3);
+          setSuccessMsg('Code accepté. Entrez votre nouveau mot de passe.');
+        } else if (resetStep === 3) {
+          const response = await fetch('/api/auth/verify-and-reset', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: formData.email, code: formData.code, newPassword: formData.newPassword }),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.message || 'Erreur lors de la réinitialisation');
+
+          setAuthMode('login');
+          setResetStep(1);
+          setFormData({ name: '', email: '', code: '', password: '', newPassword: '' });
+          setSuccessMsg('Mot de passe mis à jour avec succès ! Connectez-vous.');
+        }
+      }
     } catch (err) {
-      setError(err.response?.data?.message || 'Identifiants incorrects ou erreur serveur.');
-    } finally {
-      setLoading(false);
+      setError(err.message);
     }
   };
 
   return (
-    <div className="login-container">
-      <div className="login-card">
-        <div className="login-header">
-          <img src={ateaLogo} alt="Logo ATEA" className="login-logo" />
-            <h2>Portail ATEA</h2>
-            <p>Connectez-vous pour accéder à votre espace</p>
+    <div className="portal-container">
+      <div className="portal-card">
+        <div className="logo-container">
+          <img src={ateaLogo} alt="Logo ATEA" className="atea-logo-img" />
+          <h2>
+            {authMode === 'register' && 'Créer un Compte'}
+            {authMode === 'login' && 'Connexion au Portail'}
+            {authMode === 'reset' && (
+              resetStep === 1 ? 'Mot de passe oublié' :
+              resetStep === 2 ? 'Entrer le code de vérification' : 'Nouveau mot de passe'
+            )}
+          </h2>
         </div>
 
-        {error && <div className="error-message">{error}</div>}
+        {error && <div className="error-banner">{error}</div>}
+        {successMsg && <div className="success-banner" style={{ background: '#c6f6d5', color: '#22543d', padding: '10px', borderRadius: '4px', marginBottom: '15px', fontSize: '14px', textAlign: 'center' }}>{successMsg}</div>}
 
-        <form onSubmit={handleSubmit} className="login-form">
-          <div className="form-group">
-            <label>Adresse Email</label>
-            <input 
-              type="email" 
-              value={email} 
-              onChange={(e) => setEmail(e.target.value)} 
-              placeholder="nom.prenom@atea.nat.tn" 
-              required 
-            />
-          </div>
+        <form onSubmit={handleSubmit}>
+          {authMode === 'register' && (
+            <div className="input-group">
+              <label>Nom complet</label>
+              <input type="text" name="name" placeholder="Votre nom complet" value={formData.name} onChange={handleChange} required />
+            </div>
+          )}
 
-          <div className="form-group">
-            <label>Mot de passe</label>
-            <input 
-              type="password" 
-              value={password} 
-              onChange={(e) => setPassword(e.target.value)} 
-              placeholder="••••••••" 
-              required 
-            />
-          </div>
+          {(authMode !== 'reset' || resetStep === 1) && (
+            <div className="input-group">
+              <label>Adresse Email</label>
+              <input type="email" name="email" placeholder="nom@atea.tn" value={formData.email} onChange={handleChange} required />
+            </div>
+          )}
 
-          <button type="submit" className="login-btn" disabled={loading}>
-            {loading ? 'Connexion en cours...' : 'Se connecter'}
+          {authMode === 'reset' && resetStep === 2 && (
+            <div className="input-group">
+              <label>Code de vérification (6 chiffres)</label>
+              <input type="text" name="code" placeholder="123456" maxLength="6" value={formData.code} onChange={handleChange} required />
+            </div>
+          )}
+
+          {(authMode === 'login' || authMode === 'register') && (
+            <div className="input-group">
+              <label>Mot de passe</label>
+              <input type="password" name="password" placeholder="••••••••" value={formData.password} onChange={handleChange} required />
+            </div>
+          )}
+
+          {authMode === 'reset' && resetStep === 3 && (
+            <div className="input-group">
+              <label>Nouveau mot de passe</label>
+              <input type="password" name="newPassword" placeholder="Nouveau mot de passe" value={formData.newPassword} onChange={handleChange} required />
+            </div>
+          )}
+
+          <button type="submit" className="submit-btn">
+            {authMode === 'register' && "S'inscrire"}
+            {authMode === 'login' && 'Se connecter'}
+            {authMode === 'reset' && (
+              resetStep === 1 ? 'Envoyer le code' :
+              resetStep === 2 ? 'Vérifier le code' : 'Mettre à jour le mot de passe'
+            )}
           </button>
         </form>
+
+        <div className="toggle-auth" style={{ marginTop: '15px', textAlign: 'center', fontSize: '14px' }}>
+          {authMode === 'login' && (
+            <>
+              <p style={{ marginBottom: '8px' }}>
+                Vous n'avez pas de compte ?{' '}
+                <span style={{ color: '#3182ce', cursor: 'pointer', fontWeight: 'bold' }} onClick={() => { setAuthMode('register'); setError(''); setSuccessMsg(''); }}>
+                  S'inscrire ici
+                </span>
+              </p>
+              <p>
+                <span style={{ color: '#718096', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => { setAuthMode('reset'); setResetStep(1); setError(''); setSuccessMsg(''); }}>
+                  Mot de passe oublié ?
+                </span>
+              </p>
+            </>
+          )}
+
+          {authMode !== 'login' && (
+            <p>
+              Déjà de retour ?{' '}
+              <span style={{ color: '#3182ce', cursor: 'pointer', fontWeight: 'bold' }} onClick={() => { setAuthMode('login'); setResetStep(1); setError(''); setSuccessMsg(''); }}>
+                Se connecter
+              </span>
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );
