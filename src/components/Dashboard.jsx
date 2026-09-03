@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import API from '../services/api';
 import './Dashboard.css';
 import ateaLogo from '../assets/atea-logo.jpg';
 
@@ -38,14 +39,8 @@ const Dashboard = ({ user, onLogout }) => {
 
   const fetchRequests = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:5000/api/requests', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await response.json();
-      if (response.ok) {
-        setSubmissions(data);
-      }
+      const response = await API.get('/requests');
+      setSubmissions(response.data);
     } catch (err) {
       console.error('Erreur lors du chargement des demandes', err);
     }
@@ -65,31 +60,18 @@ const Dashboard = ({ user, onLogout }) => {
 
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:5000/api/requests', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          category: selectedCategory,
-          itemRequested: selectedItem,
-          description: description || 'Besoin exprimé via le portail ATEA'
-        })
+      await API.post('/requests', {
+        category: selectedCategory,
+        itemRequested: selectedItem,
+        description: description || 'Besoin exprimé via le portail ATEA'
       });
 
-      if (response.ok) {
-        setSelectedItem('');
-        setDescription('');
-        await fetchRequests();
-      } else {
-        const errData = await response.json();
-        alert(errData.message || 'Erreur lors de l’ajout');
-      }
+      setSelectedItem('');
+      setDescription('');
+      await fetchRequests();
     } catch (err) {
       console.error(err);
-      alert('Erreur réseau');
+      alert(err.response?.data?.message || 'Erreur lors de l’ajout');
     } finally {
       setLoading(false);
     }
@@ -99,24 +81,11 @@ const Dashboard = ({ user, onLogout }) => {
     const newStatus = (currentStatus === 'Livré') ? 'En attente' : 'Livré';
     
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:5000/api/requests/${id}/status`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ status: newStatus })
-      });
-
-      if (response.ok) {
-        fetchRequests();
-      } else {
-        const errData = await response.json();
-        alert(errData.message || 'Action non autorisée');
-      }
+      await API.patch(`/requests/${id}/status`, { status: newStatus });
+      fetchRequests();
     } catch (err) {
       console.error('Erreur mise à jour statut', err);
+      alert(err.response?.data?.message || 'Action non autorisée');
     }
   };
 
@@ -124,22 +93,11 @@ const Dashboard = ({ user, onLogout }) => {
     if (!window.confirm('Voulez-vous vraiment supprimer cette demande ?')) return;
 
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:5000/api/requests/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.ok) {
-        fetchRequests();
-      } else {
-        const errData = await response.json();
-        alert(errData.message || 'Erreur lors de la suppression');
-      }
+      await API.delete(`/requests/${id}`);
+      fetchRequests();
     } catch (err) {
       console.error('Erreur suppression', err);
+      alert(err.response?.data?.message || 'Erreur lors de la suppression');
     }
   };
 

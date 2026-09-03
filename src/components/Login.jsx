@@ -1,196 +1,253 @@
-import React, { useState } from 'react';
-import './Login.css';
+import React, { useState, useEffect } from 'react';
+import API from '../services/api';
+import './Dashboard.css';
 import ateaLogo from '../assets/atea-logo.jpg';
 
-const Login = ({ onLoginSuccess }) => {
-  const [authMode, setAuthMode] = useState('login'); // 'login', 'register', 'reset'
-  const [resetStep, setResetStep] = useState(1); // 1: Email, 2: Code, 3: Nouveau MDP
-  const [formData, setFormData] = useState({ name: '', email: '', code: '', password: '', newPassword: '' });
+const Dashboard = ({ user, onLogout }) => {
+  const [activeTab, setActiveTab] = useState('requests'); // 'requests', 'new-request'
+  const [requests, setRequests] = useState([]);
+  const [allRequestsAdmin, setAllRequestsAdmin] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // Formulaire nouvelle demande
+  const [requestType, setRequestType] = useState('Matériel');
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [urgency, setUrgency] = useState('Moyenne');
+  
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
+  // Charger les données au montage
+  useEffect(() => {
+    fetchData();
+  }, [user]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setSuccessMsg('');
-    
+  const fetchData = async () => {
+    setLoading(true);
     try {
-      if (authMode === 'login') {
-        const response = await fetch('http://localhost:5000/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: formData.email, password: formData.password }),
-        });
-        const data = await response.json();
-        
-        if (!response.ok) {
-          const rawMsg = data.error || data.message || 'Erreur de connexion';
-          // Traduction automatique si le backend renvoie l'erreur en anglais
-          const errorMsg = (rawMsg.toLowerCase().includes('invalid email') || rawMsg.toLowerCase().includes('invalid password'))
-            ? 'Adresse email ou mot de passe invalide'
-            : rawMsg;
-          throw new Error(errorMsg);
-        }
-        
-        localStorage.setItem('user', JSON.stringify(data));
-        if (data.token) localStorage.setItem('token', data.token);
-        onLoginSuccess(data);
-
-      } else if (authMode === 'register') {
-        const response = await fetch('http://localhost:5000/api/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: formData.name, email: formData.email, password: formData.password }),
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || data.message || "Erreur d'inscription");
-        
-        setAuthMode('login');
-        setFormData({ name: '', email: '', code: '', password: '', newPassword: '' });
-        alert('Compte créé avec succès ! Veuillez vous connecter.');
-
-      } else if (authMode === 'reset') {
-        if (resetStep === 1) {
-          // Étape 1 : Envoyer le code
-          const response = await fetch('http://localhost:5000/api/auth/send-reset-code', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: formData.email }),
-          });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.message || "Erreur lors de l'envoi du code.");
-
-          setResetStep(2);
-          setSuccessMsg('Un code de vérification a été envoyé à votre adresse e-mail.');
-        } else if (resetStep === 2) {
-          // Étape 2 : Valider simplement le code (on passe à l'étape 3 pour taper le mdp)
-          if (!formData.code || formData.code.length < 6) {
-            throw new Error("Veuillez entrer un code valide à 6 chiffres.");
-          }
-          setResetStep(3);
-          setSuccessMsg('Code accepté. Entrez votre nouveau mot de passe.');
-        } else if (resetStep === 3) {
-          // Étape 3 : Envoyer le code + le nouveau mot de passe au backend
-          const response = await fetch('http://localhost:5000/api/auth/verify-and-reset', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: formData.email, code: formData.code, newPassword: formData.newPassword }),
-          });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.message || 'Erreur lors de la réinitialisation');
-
-          setAuthMode('login');
-          setResetStep(1);
-          setFormData({ name: '', email: '', code: '', password: '', newPassword: '' });
-          setSuccessMsg('Mot de passe mis à jour avec succès ! Connectez-vous.');
-        }
+      if (user.role === 'admin') {
+        const res = await API.get('/requests/all');
+        setAllRequestsAdmin(res.data);
+      } else {
+        const res = await API.get('/requests/my-requests');
+        setRequests(res.data);
       }
     } catch (err) {
-      setError(err.message);
+      setError(err.response?.data?.message || "Erreur lors du chargement des données.");
+    } finally {
+      setLoading(false);
     }
   };
 
+  const handleCreateRequest = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccessMsg('');
+
+    try {
+      await API.post('/requests', {
+        type: requestType,
+        title,
+        description,
+        urgency
+      });
+
+      setSuccessMsg("Demande soumise avec succès !");
+      setTitle('');
+      setDescription('');
+      setRequestType('Matériel');
+      setUrgency('Moyenne');
+      setActiveTab('requests');
+      fetchData();
+    } catch (err) {
+      setError(err.response?.data?.message || "Erreur lors de la création de la demande.");
+    }
+  };
+
+  const handleUpdateStatus = async (id, newStatus) => {
+    try {
+      await API.patch(`/requests/${id}/status`, { status: newStatus });
+      fetchData();
+    } catch (err) {
+      alert(err.response?.data?.message || "Erreur lors de la mise à jour du statut.");
+    }
+  };
+
+  // Filtrage admin par nom ou titre
+  const filteredAdminRequests = allRequestsAdmin.filter((item) => {
+    const query = searchTerm.toLowerCase();
+    const userName = item.user?.name?.toLowerCase() || '';
+    const itemTitle = item.title?.toLowerCase() || '';
+    return userName.includes(query) || itemTitle.includes(query);
+  });
+
   return (
-    <div className="portal-container">
-      <div className="portal-card">
-        <div className="logo-container">
-          <img src={ateaLogo} alt="Logo ATEA" className="atea-logo-img" />
-          <h2>
-            {authMode === 'register' && 'Créer un Compte'}
-            {authMode === 'login' && 'Connexion au Portail'}
-            {authMode === 'reset' && (
-              resetStep === 1 ? 'Mot de passe oublié' :
-              resetStep === 2 ? 'Entrer le code de vérification' : 'Nouveau mot de passe'
-            )}
-          </h2>
+    <div className="dashboard-container">
+      <header className="dashboard-header">
+        <div className="header-left">
+          <img src={ateaLogo} alt="Logo ATEA" className="dashboard-logo" />
+          <h1>Portail ATEA</h1>
+        </div>
+        <div className="header-right">
+          <span className="user-welcome">Bonjour, <strong>{user.name}</strong> ({user.role === 'admin' ? 'Administrateur' : 'Employé'})</span>
+          <button onClick={onLogout} className="logout-btn">Déconnexion</button>
+        </div>
+      </header>
+
+      <div className="dashboard-content">
+        <div className="dashboard-nav">
+          <button 
+            className={activeTab === 'requests' ? 'nav-btn active' : 'nav-btn'} 
+            onClick={() => setActiveTab('requests')}
+          >
+            {user.role === 'admin' ? 'Toutes les Demandes' : 'Mes Demandes'}
+          </button>
+          {user.role !== 'admin' && (
+            <button 
+              className={activeTab === 'new-request' ? 'nav-btn active' : 'nav-btn'} 
+              onClick={() => setActiveTab('new-request')}
+            >
+              Nouvelle Demande
+            </button>
+          )}
         </div>
 
         {error && <div className="error-banner">{error}</div>}
-        {successMsg && <div className="success-banner" style={{ background: '#c6f6d5', color: '#22543d', padding: '10px', borderRadius: '4px', marginBottom: '15px', fontSize: '14px', textAlign: 'center' }}>{successMsg}</div>}
+        {successMsg && <div className="success-banner">{successMsg}</div>}
 
-        <form onSubmit={handleSubmit}>
-          {authMode === 'register' && (
-            <div className="input-group">
-              <label>Nom complet</label>
-              <input type="text" name="name" placeholder="Votre nom complet" value={formData.name} onChange={handleChange} required />
-            </div>
-          )}
-
-          {/* Champ Email (Étape 1 du reset ou Login/Register) */}
-          {(authMode !== 'reset' || resetStep === 1) && (
-            <div className="input-group">
-              <label>Adresse Email</label>
-              <input type="email" name="email" placeholder="nom@atea.tn" value={formData.email} onChange={handleChange} required />
-            </div>
-          )}
-
-          {/* Champ Code de vérification (Uniquement à l'étape 2 du reset) */}
-          {authMode === 'reset' && resetStep === 2 && (
-            <div className="input-group">
-              <label>Code de vérification (6 chiffres)</label>
-              <input type="text" name="code" placeholder="123456" maxLength="6" value={formData.code} onChange={handleChange} required />
-            </div>
-          )}
-
-          {/* Mot de passe classique (Login / Register) */}
-          {(authMode === 'login' || authMode === 'register') && (
-            <div className="input-group">
-              <label>Mot de passe</label>
-              <input type="password" name="password" placeholder="••••••••" value={formData.password} onChange={handleChange} required />
-            </div>
-          )}
-
-          {/* Nouveau mot de passe (Uniquement à l'étape 3 du reset) */}
-          {authMode === 'reset' && resetStep === 3 && (
-            <div className="input-group">
-              <label>Nouveau mot de passe</label>
-              <input type="password" name="newPassword" placeholder="Nouveau mot de passe" value={formData.newPassword} onChange={handleChange} required />
-            </div>
-          )}
-
-          <button type="submit" className="submit-btn">
-            {authMode === 'register' && "S'inscrire"}
-            {authMode === 'login' && 'Se connecter'}
-            {authMode === 'reset' && (
-              resetStep === 1 ? 'Envoyer le code' :
-              resetStep === 2 ? 'Vérifier le code' : 'Mettre à jour le mot de passe'
+        {activeTab === 'requests' && (
+          <div className="requests-section">
+            {user.role === 'admin' && (
+              <div className="search-bar-container">
+                <input 
+                  type="text" 
+                  placeholder="Rechercher par employé ou titre..." 
+                  value={searchTerm} 
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="search-input"
+                />
+              </div>
             )}
-          </button>
-        </form>
 
-        <div className="toggle-auth" style={{ marginTop: '15px', textAlign: 'center', fontSize: '14px' }}>
-          {authMode === 'login' && (
-            <>
-              <p style={{ marginBottom: '8px' }}>
-                Vous n'avez pas de compte ?{' '}
-                <span style={{ color: '#3182ce', cursor: 'pointer', fontWeight: 'bold' }} onClick={() => { setAuthMode('register'); setError(''); setSuccessMsg(''); }}>
-                  S'inscrire ici
-                </span>
-              </p>
-              <p>
-                <span style={{ color: '#718096', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => { setAuthMode('reset'); setResetStep(1); setError(''); setSuccessMsg(''); }}>
-                  Mot de passe oublié ?
-                </span>
-              </p>
-            </>
-          )}
+            {loading ? (
+              <p className="loading-text">Chargement en cours...</p>
+            ) : (
+              <div className="table-responsive">
+                <table className="requests-table">
+                  <thead>
+                    <tr>
+                      {user.role === 'admin' && <th>Employé</th>}
+                      <th>Type</th>
+                      <th>Titre</th>
+                      <th>Description</th>
+                      <th>Urgence</th>
+                      <th>Statut</th>
+                      <th>Date</th>
+                      {user.role === 'admin' && <th>Actions</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(user.role === 'admin' ? filteredAdminRequests : requests).length === 0 ? (
+                      <tr>
+                        <td colSpan={user.role === 'admin' ? 8 : 7} className="no-data">Aucune demande trouvée.</td>
+                      </tr>
+                    ) : (
+                      (user.role === 'admin' ? filteredAdminRequests : requests).map((req) => (
+                        <tr key={req._id || req.id}>
+                          {user.role === 'admin' && <td>{req.user?.name || 'N/A'}</td>}
+                          <td>{req.type}</td>
+                          <td>{req.title}</td>
+                          <td>{req.description}</td>
+                          <td>
+                            <span className={`badge urgency-${req.urgency?.toLowerCase()}`}>
+                              {req.urgency}
+                            </span>
+                          </td>
+                          <td>
+                            <span className={`badge status-${req.status?.toLowerCase()}`}>
+                              {req.status}
+                            </span>
+                          </td>
+                          <td>{new Date(req.createdAt).toLocaleDateString()}</td>
+                          {user.role === 'admin' && (
+                            <td>
+                              <select 
+                                value={req.status} 
+                                onChange={(e) => handleUpdateStatus(req._id || req.id, e.target.value)}
+                                className="status-select"
+                              >
+                                <option value="En attente">En attente</option>
+                                <option value="Approuvé">Approuvé</option>
+                                <option value="Rejeté">Rejeté</option>
+                                <option value="Traité">Traité</option>
+                              </select>
+                            </td>
+                          )}
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
 
-          {authMode !== 'login' && (
-            <p>
-              Déjà de retour ?{' '}
-              <span style={{ color: '#3182ce', cursor: 'pointer', fontWeight: 'bold' }} onClick={() => { setAuthMode('login'); setResetStep(1); setError(''); setSuccessMsg(''); }}>
-                Se connecter
-              </span>
-            </p>
-          )}
-        </div>
+        {activeTab === 'new-request' && user.role !== 'admin' && (
+          <div className="form-section">
+            <h2>Soumettre un besoin ou une demande de matériel</h2>
+            <form onSubmit={handleCreateRequest} className="request-form">
+              <div className="input-group">
+                <label>Type de demande</label>
+                <select value={requestType} onChange={(e) => setRequestType(e.target.value)}>
+                  <option value="Matériel">Matériel</option>
+                  <option value="Logiciel">Logiciel</option>
+                  <option value="Maintenance">Maintenance</option>
+                  <option value="Autre">Autre</option>
+                </select>
+              </div>
+
+              <div className="input-group">
+                <label>Titre</label>
+                <input 
+                  type="text" 
+                  placeholder="Ex: Remplacement clavier / Licence IDE" 
+                  value={title} 
+                  onChange={(e) => setTitle(e.target.value)} 
+                  required 
+                />
+              </div>
+
+              <div className="input-group">
+                <label>Description détaillée</label>
+                <textarea 
+                  placeholder="Précisez vos besoins..." 
+                  value={description} 
+                  onChange={(e) => setDescription(e.target.value)} 
+                  rows="4" 
+                  required 
+                />
+              </div>
+
+              <div className="input-group">
+                <label>Niveau d'urgence</label>
+                <select value={urgency} onChange={(e) => setUrgency(e.target.value)}>
+                  <option value="Basse">Basse</option>
+                  <option value="Moyenne">Moyenne</option>
+                  <option value="Haute">Haute</option>
+                  <option value="Urgente">Urgente</option>
+                </select>
+              </div>
+
+              <button type="submit" className="submit-btn">Envoyer la demande</button>
+            </form>
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
-export default Login;
+export default Dashboard;
