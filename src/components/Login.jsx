@@ -42,7 +42,7 @@ const Login = ({ onLoginSuccess }) => {
         
         setAuthMode('login');
         setFormData({ name: '', email: '', code: '', password: '', newPassword: '' });
-        alert('Compte créé avec succès ! Veuillez vous connecter.');
+        setSuccessMsg('Compte créé avec succès ! Veuillez vous connecter.');
 
       } else if (authMode === 'reset') {
         if (resetStep === 1) {
