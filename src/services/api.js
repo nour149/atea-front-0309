@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const API = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'https://atea-back-0309.onrender.com/api',
+  baseURL: process.env.REACT_APP_API_URL || 'https://atea-back-0709.onrender.com/api',
   headers: {
     'Content-Type': 'application/json',
   },
