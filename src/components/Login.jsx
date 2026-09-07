@@ -79,7 +79,7 @@ const Login = ({ onLoginSuccess }) => {
       <div className="portal-card">
         <div className="logo-container">
           <img src={ateaLogo} alt="Logo ATEA" className="atea-logo-img" />
-          <h2>
+          <h2 className="portal-title">
             {authMode === 'register' && 'Créer un Compte'}
             {authMode === 'login' && 'Portail de Gestion des Réclamations'}
             {authMode === 'reset' && (
