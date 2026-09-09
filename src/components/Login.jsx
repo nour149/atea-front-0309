@@ -89,7 +89,35 @@ const Login = ({ onLoginSuccess }) => {
           </h2>
         </div>
 
-        {error && <div className="error-banner">{error}</div>}
+        {error && (
+          <div className="error-banner" style={{ padding: '10px', marginBottom: '15px', borderRadius: '4px', backgroundColor: '#fed7d7', color: '#9b2c2c', border: '1px solid #feb2b2', textAlign: 'center' }}>
+            <p style={{ margin: 0 }}>{error}</p>
+            {error.includes("pas encore de compte") && (
+              <button 
+                type="button"
+                onClick={() => {
+                  setAuthMode('register');
+                  setError('');
+                  setSuccessMsg('');
+                }}
+                style={{ 
+                  marginTop: '10px', 
+                  backgroundColor: '#3182ce', 
+                  color: 'white', 
+                  border: 'none', 
+                  padding: '6px 14px', 
+                  borderRadius: '4px', 
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  fontSize: '13px'
+                }}
+              >
+                Créer mon compte maintenant
+              </button>
+            )}
+          </div>
+        )}
+
         {successMsg && <div className="success-banner" style={{ background: '#c6f6d5', color: '#22543d', padding: '10px', borderRadius: '4px', marginBottom: '15px', fontSize: '14px', textAlign: 'center' }}>{successMsg}</div>}
 
         <form onSubmit={handleSubmit}>
