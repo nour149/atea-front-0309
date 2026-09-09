@@ -42,7 +42,7 @@ const Dashboard = ({ user, onLogout }) => {
   const currentCategoryObj = categories.find(c => c.title === selectedCategory);
   const hasPredefinedItems = currentCategoryObj && currentCategoryObj.items.length > 0;
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const requestsRes = await API.get('/requests');
       setSubmissions(requestsRes.data);
@@ -54,11 +54,11 @@ const Dashboard = ({ user, onLogout }) => {
     } catch (err) {
       console.error('Erreur lors du chargement des données', err);
     }
-  };
+  }, [user.role]);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   const handleAddRequest = async (e) => {
     e.preventDefault();
