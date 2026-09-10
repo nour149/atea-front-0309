@@ -1,4 +1,3 @@
-import React, { useState, useEffect } from 'react';
 import API from '../services/api';
 import './Dashboard.css';
 import ateaLogo from '../assets/atea-logo.jpg';
