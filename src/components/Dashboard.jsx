@@ -4,7 +4,6 @@ import ateaLogo from '../assets/atea-logo.jpg';
 import React, { useState, useEffect, useCallback } from 'react';
 
 const Dashboard = ({ user, onLogout }) => {
-  // Toutes les catégories disposent désormais d'une liste de suggestions et d'un champ de saisie libre permanent.
   const categories = [
     {
       title: 'Matériel informatique',
@@ -53,7 +52,6 @@ const Dashboard = ({ user, onLogout }) => {
   const displayRole = user.role === 'admin' ? 'ADMINISTRATEUR' : 'EMPLOYÉ';
 
   const currentCategoryObj = categories.find(c => c.title === selectedCategory);
-  // Toujours vrai désormais, permettant la double sélection/saisie libre sur chaque rubrique
   const hasPredefinedItems = currentCategoryObj && currentCategoryObj.items.length > 0;
 
   const fetchData = useCallback(async () => {
@@ -458,7 +456,7 @@ const Dashboard = ({ user, onLogout }) => {
           <div style={{ background: '#fff', padding: '25px', borderRadius: '8px', width: '350px', textAlign: 'center', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
             <h3 style={{ margin: '0 0 10px 0', color: '#2d3748' }}>Confirmation</h3>
             <p style={{ color: '#4a5568', fontSize: '14px', marginBottom: '20px' }}>Voulez-vous vraiment supprimer cette demande ?</p>
-            <div style.style={{ display: 'flex', justifyContent: 'center', gap: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '10px' }}>
               <button 
                 onClick={() => setDeleteTargetId(null)}
                 style={{ padding: '8px 16px', background: '#e2e8f0', color: '#2d3748', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
