@@ -2,27 +2,41 @@ import API from '../services/api';
 import './Dashboard.css';
 import ateaLogo from '../assets/atea-logo.jpg';
 import React, { useState, useEffect, useCallback } from 'react';
+
 const Dashboard = ({ user, onLogout }) => {
+  // Toutes les catégories disposent désormais d'une liste de suggestions et d'un champ de saisie libre permanent.
   const categories = [
     {
       title: 'Matériel informatique',
-      items: ['Imprimante', 'Pc Bureau', 'Pc Portable']
+      items: ['Imprimante', 'Pc Bureau', 'Pc Portable', 'Accessoires informatiques']
     },
     {
       title: 'Mobilier et équipements',
-      items: ['Chauffage', 'Armoire', 'Bureau', 'Meubles de rangement', 'Etagères d’archive', 'Boite d’archive', 'Chaise orthopédique', 'Chaise roulante', 'Climatiseurs', 'Lignes téléphoniques externes', 'Bain d’huile']
+      items: [
+        'Chauffage',
+        'Armoire',
+        'Bureau',
+        'Meubles de rangement',
+        'Etagères d’archive',
+        'Boite d’archive',
+        'Chaise orthopédique',
+        'Chaise roulante',
+        'Climatiseurs',
+        'Lignes téléphoniques externes',
+        'Bain d’huile'
+      ]
     },
     {
-      title: 'Besoins en fourniture bureautique & Certifications',
-      items: [] // Rendu vide pour permettre une saisie libre complète
+      title: 'Besoins en fourniture bureautique',
+      items: ['Stylos', 'Papier A4', 'Classeurs', 'Bloc-notes', 'Agrafeuse']
     },
     {
-      title: 'Besoins en Formations',
+      title: 'Besoins en Formations et Certifications',
       items: ['Project Management', 'Finance Publique, gestion budgetaire', 'Gestion bien et DRH', 'Management qualité', 'Langues']
     },
     {
       title: 'Autres',
-      items: ['Entretien de l’espace sanitaire et du bureau (peinture maintenance)']
+      items: ['Produits de nettoyage', 'Entretien de l’espace sanitaire et du bureau (peinture maintenance)']
     }
   ];
 
@@ -39,6 +53,7 @@ const Dashboard = ({ user, onLogout }) => {
   const displayRole = user.role === 'admin' ? 'ADMINISTRATEUR' : 'EMPLOYÉ';
 
   const currentCategoryObj = categories.find(c => c.title === selectedCategory);
+  // Toujours vrai désormais, permettant la double sélection/saisie libre sur chaque rubrique
   const hasPredefinedItems = currentCategoryObj && currentCategoryObj.items.length > 0;
 
   const fetchData = useCallback(async () => {
@@ -199,23 +214,32 @@ const Dashboard = ({ user, onLogout }) => {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600' }}>Article</label>
+                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600' }}>Article / Précision</label>
                   {hasPredefinedItems ? (
-                    <select 
-                      value={selectedItem} 
-                      onChange={(e) => setSelectedItem(e.target.value)}
-                      style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0' }}
-                      required
-                    >
-                      <option value="">-- Sélectionnez un article --</option>
-                      {currentCategoryObj.items.map((it, i) => (
-                        <option key={i} value={it}>{it}</option>
-                      ))}
-                    </select>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <select 
+                        value={selectedItem} 
+                        onChange={(e) => setSelectedItem(e.target.value)}
+                        style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0' }}
+                        required={!selectedItem}
+                      >
+                        <option value="">-- Sélectionnez dans la liste ou tapez ci-dessous --</option>
+                        {currentCategoryObj.items.map((it, i) => (
+                          <option key={i} value={it}>{it}</option>
+                        ))}
+                      </select>
+                      <input 
+                        type="text" 
+                        placeholder="Ou tapez un article personnalisé..." 
+                        value={selectedItem}
+                        onChange={(e) => setSelectedItem(e.target.value)}
+                        style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '13px' }}
+                      />
+                    </div>
                   ) : (
                     <input 
                       type="text" 
-                      placeholder="Ex: Certification ISO27001..." 
+                      placeholder="Tapez votre besoin en toute liberté..." 
                       value={selectedItem}
                       onChange={(e) => setSelectedItem(e.target.value)}
                       style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0' }}
@@ -334,19 +358,28 @@ const Dashboard = ({ user, onLogout }) => {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600' }}>Article</label>
+                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600' }}>Article / Précision</label>
                   {hasPredefinedItems ? (
-                    <select 
-                      value={selectedItem} 
-                      onChange={(e) => setSelectedItem(e.target.value)}
-                      style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0' }}
-                      required
-                    >
-                      <option value="">-- Sélectionnez un article --</option>
-                      {currentCategoryObj.items.map((it, i) => (
-                        <option key={i} value={it}>{it}</option>
-                      ))}
-                    </select>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <select 
+                        value={selectedItem} 
+                        onChange={(e) => setSelectedItem(e.target.value)}
+                        style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0' }}
+                        required={!selectedItem}
+                      >
+                        <option value="">-- Sélectionnez dans la liste ou tapez ci-dessous --</option>
+                        {currentCategoryObj.items.map((it, i) => (
+                          <option key={i} value={it}>{it}</option>
+                        ))}
+                      </select>
+                      <input 
+                        type="text" 
+                        placeholder="Ou tapez un article personnalisé..." 
+                        value={selectedItem}
+                        onChange={(e) => setSelectedItem(e.target.value)}
+                        style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '13px' }}
+                      />
+                    </div>
                   ) : (
                     <input 
                       type="text" 
@@ -425,7 +458,7 @@ const Dashboard = ({ user, onLogout }) => {
           <div style={{ background: '#fff', padding: '25px', borderRadius: '8px', width: '350px', textAlign: 'center', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
             <h3 style={{ margin: '0 0 10px 0', color: '#2d3748' }}>Confirmation</h3>
             <p style={{ color: '#4a5568', fontSize: '14px', marginBottom: '20px' }}>Voulez-vous vraiment supprimer cette demande ?</p>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '10px' }}>
+            <div style.style={{ display: 'flex', justifyContent: 'center', gap: '10px' }}>
               <button 
                 onClick={() => setDeleteTargetId(null)}
                 style={{ padding: '8px 16px', background: '#e2e8f0', color: '#2d3748', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
