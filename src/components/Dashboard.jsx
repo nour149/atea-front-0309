@@ -34,46 +34,6 @@ const Dashboard = ({ user, onLogout }) => {
       : 'EMPLOYÉ';
 
 
-  // ==========================================================
-  // CLEAN AUDIT LOG
-  // ==========================================================
-
-  const cleanAuditLogs = (logs) => {
-
-    if (!Array.isArray(logs)) {
-      return [];
-    }
-
-    return logs.filter(Boolean);
-  };
-
-
-  // ==========================================================
-  // EXCEL ACTION LABEL
-  // ==========================================================
-
-  const getExcelActionLabel = (action) => {
-
-    const normalized =
-      String(action || '')
-        .trim()
-        .toUpperCase();
-
-    switch (normalized) {
-
-      case 'REQUEST_CREATED':
-        return 'Demande créée';
-
-      case 'STATUS_CHANGE':
-        return 'Changement de statut';
-
-      case 'REQUEST_DELETED':
-        return 'Demande supprimée';
-
-      default:
-        return action || '—';
-    }
-  };
 
 
   // ==========================================================
