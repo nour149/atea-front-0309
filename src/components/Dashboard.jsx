@@ -34,6 +34,32 @@ const Dashboard = ({ user, onLogout }) => {
       : 'EMPLOYÉ';
 
 
+  // ==========================================================
+  // DATE FORMAT
+  // Same format used in UI and Excel
+  // ==========================================================
+
+  const formatDate = (value) => {
+
+    if (!value) {
+      return '—';
+    }
+
+    const date =
+      new Date(value);
+
+    if (
+      Number.isNaN(
+        date.getTime()
+      )
+    ) {
+      return '—';
+    }
+
+    return date.toLocaleString(
+      'fr-FR'
+    );
+  };
 
 
   // ==========================================================
@@ -292,115 +318,128 @@ const Dashboard = ({ user, onLogout }) => {
 
 
       // ========================================================
-      // DATE FORMAT
+      // EXCEL DATA
       // ========================================================
 
-      const formatDate = (value) => {
+      const excelData =
+        requests.map(
+          (request) => {
 
-        if (!value) {
-          return '—';
-        }
-
-
-        const date =
-          new Date(value);
-
-
-        if (
-          Number.isNaN(
-            date.getTime()
-          )
-        ) {
-
-          return '—';
-
-        }
+            const employee =
+              request?.employee ||
+              request?.user?.name ||
+              request?.user?.fullName ||
+              request?.user?.email ||
+              '—';
 
 
-        return date.toLocaleString(
-          'fr-FR'
+            const employeeEmail =
+              request?.employeeEmail ||
+              request?.user?.email ||
+              '—';
+
+
+            const category =
+              request?.category ||
+              request?.categoryName ||
+              request?.category?.name ||
+              '—';
+
+
+            const article =
+              request?.article?.name ||
+              (
+                typeof request?.article === 'string'
+                  ? request.article
+                  : ''
+              );
+
+
+            const customItem =
+              request?.customItem || '';
+
+
+            return {
+
+              'Date de création':
+                formatDate(
+                  request?.createdAt
+                ),
+
+              'Employé':
+                employee,
+
+              'Email':
+                employeeEmail,
+
+              'Catégorie':
+                category,
+
+              'Article':
+                article || '—',
+
+              'Besoin personnalisé':
+                customItem || '—',
+
+              'Description':
+                request?.description || '—',
+
+              'Quantité':
+                request?.quantity ?? 0,
+
+              'Statut':
+                request?.status || '—',
+
+              'Date de suppression':
+                formatDate(
+                  request?.deletedAt
+                ),
+
+              'Supprimée par':
+                request?.deletedBy?.name ||
+                request?.deletedByName ||
+                (
+                  typeof request?.deletedBy === 'string'
+                    ? request.deletedBy
+                    : ''
+                ) ||
+                '—',
+
+              'Dernière modification':
+                formatDate(
+                  request?.updatedAt
+                )
+
+            };
+
+          }
         );
 
-      };
+
+      const worksheet =
+        XLSX.utils.json_to_sheet(
+          excelData
+        );
 
 
-     const excelData = requests.map((request) => {
-  const employee =
-    request?.employee ||
-    request?.user?.name ||
-    request?.user?.fullName ||
-    request?.user?.email ||
-    '—';
+      worksheet['!cols'] = [
 
-  const employeeEmail =
-    request?.employeeEmail ||
-    request?.user?.email ||
-    '—';
+        { wch: 22 }, // Date de création
+        { wch: 25 }, // Employé
+        { wch: 35 }, // Email
+        { wch: 25 }, // Catégorie
+        { wch: 30 }, // Article
+        { wch: 30 }, // Besoin personnalisé
+        { wch: 45 }, // Description
+        { wch: 12 }, // Quantité
+        { wch: 18 }, // Statut
+        { wch: 22 }, // Date de suppression
+        { wch: 25 }, // Supprimée par
+        { wch: 25 }  // Dernière modification
 
-  const category =
-    request?.category ||
-    request?.categoryName ||
-    request?.category?.name ||
-    '—';
+      ];
 
-  const article =
-    request?.article?.name ||
-    (typeof request?.article === 'string'
-      ? request.article
-      : '');
 
-  const customItem =
-    request?.customItem || '';
-
-  return {
-    'Date de création': formatDate(request?.createdAt),
-
-    'Employé': employee,
-
-    'Email': employeeEmail,
-
-    'Catégorie': category,
-
-    'Article': article || '—',
-
-    'Besoin personnalisé': customItem || '—',
-
-    'Description': request?.description || '—',
-
-    'Quantité': request?.quantity ?? 0,
-
-    'Statut': request?.status || '—',
-
-    'Date de suppression': formatDate(request?.deletedAt),
-
-    'Supprimée par':
-      request?.deletedBy?.name ||
-      request?.deletedByName ||
-      (typeof request?.deletedBy === 'string'
-        ? request.deletedBy
-        : '') ||
-      '—',
-
-    'Dernière modification': formatDate(request?.updatedAt)
-  };
-});
-
-const worksheet = XLSX.utils.json_to_sheet(excelData);
-
-worksheet['!cols'] = [
-  { wch: 22 }, // Date de création
-  { wch: 25 }, // Employé
-  { wch: 35 }, // Email
-  { wch: 25 }, // Catégorie
-  { wch: 30 }, // Article
-  { wch: 30 }, // Besoin personnalisé
-  { wch: 45 }, // Description
-  { wch: 12 }, // Quantité
-  { wch: 18 }, // Statut
-  { wch: 22 }, // Date de suppression
-  { wch: 25 }, // Supprimée par
-  { wch: 25 }  // Dernière modification
-];
       // ========================================================
       // CREATE WORKBOOK
       // ========================================================
@@ -1912,7 +1951,9 @@ worksheet['!cols'] = [
                       <div
                         style={{
                           padding:
-                            '0 20px 15px 20px'
+                            '0 20px 15px 20px',
+                          overflowX:
+                            'auto'
                         }}
                       >
 
@@ -1941,6 +1982,24 @@ worksheet['!cols'] = [
                                   '1px solid #edf2f7'
                               }}
                             >
+
+                              <th
+                                style={{
+                                  padding:
+                                    '10px'
+                                }}
+                              >
+                                Date de création
+                              </th>
+
+                              <th
+                                style={{
+                                  padding:
+                                    '10px'
+                                }}
+                              >
+                                Dernière modification
+                              </th>
 
                               <th
                                 style={{
@@ -2022,6 +2081,42 @@ worksheet['!cols'] = [
                                         '1px solid #edf2f7'
                                     }}
                                   >
+
+                                    <td
+                                      style={{
+                                        padding:
+                                          '10px',
+                                        fontSize:
+                                          '12px',
+                                        color:
+                                          '#4a5568',
+                                        whiteSpace:
+                                          'nowrap'
+                                      }}
+                                    >
+                                      {formatDate(
+                                        sub.createdAt
+                                      )}
+                                    </td>
+
+
+                                    <td
+                                      style={{
+                                        padding:
+                                          '10px',
+                                        fontSize:
+                                          '12px',
+                                        color:
+                                          '#4a5568',
+                                        whiteSpace:
+                                          'nowrap'
+                                      }}
+                                    >
+                                      {formatDate(
+                                        sub.updatedAt
+                                      )}
+                                    </td>
+
 
                                     <td
                                       style={{
@@ -2594,7 +2689,9 @@ worksheet['!cols'] = [
                 borderRadius:
                   '8px',
                 boxShadow:
-                  '0 2px 4px rgba(0,0,0,0.05)'
+                  '0 2px 4px rgba(0,0,0,0.05)',
+                overflowX:
+                  'auto'
               }}
             >
 
@@ -2640,6 +2737,14 @@ worksheet['!cols'] = [
                           'left'
                       }}
                     >
+
+                      <th style={{ padding: '10px' }}>
+                        Date de création
+                      </th>
+
+                      <th style={{ padding: '10px' }}>
+                        Dernière modification
+                      </th>
 
                       <th style={{ padding: '10px' }}>
                         Catégorie
@@ -2696,6 +2801,42 @@ worksheet['!cols'] = [
                                 '1px solid #edf2f7'
                             }}
                           >
+
+                            <td
+                              style={{
+                                padding:
+                                  '10px',
+                                fontSize:
+                                  '12px',
+                                color:
+                                  '#4a5568',
+                                whiteSpace:
+                                  'nowrap'
+                              }}
+                            >
+                              {formatDate(
+                                sub.createdAt
+                              )}
+                            </td>
+
+
+                            <td
+                              style={{
+                                padding:
+                                  '10px',
+                                fontSize:
+                                  '12px',
+                                color:
+                                  '#4a5568',
+                                whiteSpace:
+                                  'nowrap'
+                              }}
+                            >
+                              {formatDate(
+                                sub.updatedAt
+                              )}
+                            </td>
+
 
                             <td
                               style={{
