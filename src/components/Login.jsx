@@ -81,7 +81,7 @@ const Login = ({ onLoginSuccess }) => {
           <img src={ateaLogo} alt="Logo ATEA" className="atea-logo-img" />
           <h2 className="portal-title">
             {authMode === 'register' && 'Créer un Compte'}
-            {authMode === 'login' && 'Portail de Gestion des Réclamations'}
+            {authMode === 'login' && 'Portail de Gestion des Besoins'}
             {authMode === 'reset' && (
               resetStep === 1 ? 'Mot de passe oublié' :
               resetStep === 2 ? 'Entrer le code de vérification' : 'Nouveau mot de passe'
