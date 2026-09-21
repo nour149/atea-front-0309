@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -18,11 +20,28 @@ function App() {
     setUser(null);
   };
 
-  if (!user) {
-    return <Login onLoginSuccess={(userData) => setUser(userData)} />;
-  }
+  return (
+    <>
+      {/* ToastContainer placed here handles notifications globally */}
+      <ToastContainer 
+        position="top-right" 
+        autoClose={3000} 
+        hideProgressBar={false}
+        newestOnTop
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+      />
 
-  return <Dashboard user={user} onLogout={handleLogout} />;
+      {!user ? (
+        <Login onLoginSuccess={(userData) => setUser(userData)} />
+      ) : (
+        <Dashboard user={user} onLogout={handleLogout} />
+      )}
+    </>
+  );
 }
 
 export default App;
