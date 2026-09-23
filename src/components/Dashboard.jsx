@@ -20,13 +20,25 @@ const Dashboard = ({ user, onLogout }) => {
   const [customItem, setCustomItem] = useState('');
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+
   const [loading, setLoading] = useState(false);
 
   const [deleteTargetId, setDeleteTargetId] = useState(null);
   const [quantity, setQuantity] = useState(1);
 
-  // Used only while exporting Excel
   const [auditLoading, setAuditLoading] = useState(false);
+
+  // ==========================================================
+  // ADMIN PAGINATION
+  // ==========================================================
+
+  // 500 is the default for large datasets.
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(500);
+
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalRequests, setTotalRequests] = useState(0);
 
   const displayRole =
     user.role === 'admin'
@@ -35,8 +47,26 @@ const Dashboard = ({ user, onLogout }) => {
 
 
   // ==========================================================
+  // PAGE SIZE OPTIONS
+  // ==========================================================
+
+  const getPageSizeOptions = (total) => {
+
+    if (total <= 100) {
+      return [10, 20, 50];
+    }
+
+    if (total <= 1000) {
+      return [20, 50, 100, 200, 300, 500];
+    }
+
+    return [50, 100, 200, 300, 500];
+
+  };
+
+
+  // ==========================================================
   // DATE FORMAT
-  // Same format used in UI and Excel
   // ==========================================================
 
   const formatDate = (value) => {
@@ -45,21 +75,34 @@ const Dashboard = ({ user, onLogout }) => {
       return '—';
     }
 
-    const date =
-      new Date(value);
+    const date = new Date(value);
 
-    if (
-      Number.isNaN(
-        date.getTime()
-      )
-    ) {
+    if (Number.isNaN(date.getTime())) {
       return '—';
     }
 
-    return date.toLocaleString(
-      'fr-FR'
-    );
+    return date.toLocaleString('fr-FR');
+
   };
+
+
+  // ==========================================================
+  // DEBOUNCE SEARCH
+  // ==========================================================
+
+  useEffect(() => {
+
+    const timer = setTimeout(() => {
+
+      setDebouncedSearchTerm(
+        searchTerm.trim()
+      );
+
+    }, 350);
+
+    return () => clearTimeout(timer);
+
+  }, [searchTerm]);
 
 
   // ==========================================================
@@ -70,41 +113,228 @@ const Dashboard = ({ user, onLogout }) => {
 
     try {
 
+      let requestsResponse;
+
+
+      // ========================================================
+      // ADMIN
+      // ========================================================
+
+      if (user.role === 'admin') {
+
+        const params = new URLSearchParams();
+
+        params.set(
+          'page',
+          String(currentPage)
+        );
+
+        params.set(
+          'limit',
+          String(pageSize)
+        );
+
+        if (debouncedSearchTerm) {
+
+          params.set(
+            'search',
+            debouncedSearchTerm
+          );
+
+        }
+
+
+        // ======================================================
+        // DEBUG
+        // ======================================================
+
+        console.log(
+          '=========================================='
+        );
+
+        console.log(
+          'FRONTEND REQUEST PAGINATION:',
+          {
+            page: currentPage,
+            limit: pageSize,
+            url: `/requests?${params.toString()}`
+          }
+        );
+
+        console.log(
+          '=========================================='
+        );
+
+
+        requestsResponse =
+          await API.get(
+            `/requests?${params.toString()}`
+          );
+
+      } else {
+
+        // ======================================================
+        // EMPLOYEE
+        // ======================================================
+
+        requestsResponse =
+          await API.get(
+            '/requests'
+          );
+
+      }
+
+
+      // ========================================================
+      // CATEGORIES + ARTICLES
+      // ========================================================
+
       const [
-        requestsRes,
         categoriesRes,
         articlesRes
       ] = await Promise.all([
-
-        API.get('/requests'),
-
         API.get('/categories'),
-
         API.get('/articles')
-
       ]);
 
 
-      // --------------------------------------------------------
-      // REQUESTS
-      // --------------------------------------------------------
+      // ========================================================
+      // REQUEST DATA
+      // ========================================================
 
       const requestData =
-        requestsRes?.data;
+        requestsResponse?.data;
+
 
       const requests =
         Array.isArray(requestData)
           ? requestData
-          : Array.isArray(requestData?.requests)
+          : Array.isArray(
+              requestData?.requests
+            )
             ? requestData.requests
-            : Array.isArray(requestData?.data)
+            : Array.isArray(
+                requestData?.data
+              )
               ? requestData.data
               : [];
 
 
-      // The backend already hides soft-deleted requests.
-      // This additional frontend filter ensures that a deleted
-      // request cannot accidentally appear in the dashboard.
+      // ========================================================
+      // ADMIN PAGINATION
+      // ========================================================
+
+      if (user.role === 'admin') {
+
+        const pagination =
+          requestData?.pagination || {};
+
+
+        // ------------------------------------------------------
+        // TOTAL REQUESTS
+        // ------------------------------------------------------
+
+        const total =
+          Number(
+            pagination.totalRequests ??
+            pagination.total ??
+            pagination.count ??
+            requestData?.totalRequests ??
+            requestData?.total ??
+            requestData?.count ??
+            0
+          );
+
+
+        // ------------------------------------------------------
+        // DEBUG BACKEND RESPONSE
+        // ------------------------------------------------------
+
+        console.log(
+          'PAGINATION RESPONSE FROM BACKEND:',
+          {
+            requestedPage: currentPage,
+            requestedLimit: pageSize,
+            backendPage: pagination.page,
+            backendLimit: pagination.limit,
+            totalRequests: total,
+            backendTotalPages:
+              pagination.totalPages
+          }
+        );
+
+
+        // ======================================================
+        // IMPORTANT
+        //
+        // DO NOT USE pagination.limit TO CHANGE pageSize.
+        //
+        // The selected frontend pageSize is authoritative.
+        //
+        // We therefore calculate totalPages ourselves:
+        //
+        // 30026 / 500 = 61 pages
+        // ======================================================
+
+        const calculatedTotalPages =
+          Math.max(
+            Math.ceil(
+              total / pageSize
+            ),
+            1
+          );
+
+
+        console.log(
+          'FRONTEND CALCULATED PAGINATION:',
+          {
+            totalRequests: total,
+            selectedPageSize: pageSize,
+            calculatedTotalPages:
+              calculatedTotalPages
+          }
+        );
+
+
+        // ------------------------------------------------------
+        // SAVE TOTAL
+        // ------------------------------------------------------
+
+        setTotalRequests(
+          total
+        );
+
+
+        // ------------------------------------------------------
+        // SAVE TOTAL PAGES
+        // ------------------------------------------------------
+
+        setTotalPages(
+          calculatedTotalPages
+        );
+
+
+        // ------------------------------------------------------
+        // CURRENT PAGE CANNOT EXCEED TOTAL PAGES
+        // ------------------------------------------------------
+
+        if (
+          currentPage >
+          calculatedTotalPages
+        ) {
+
+          setCurrentPage(
+            calculatedTotalPages
+          );
+
+        }
+
+      }
+
+
+      // ========================================================
+      // REQUESTS
+      // ========================================================
 
       setSubmissions(
         requests.filter(
@@ -114,19 +344,24 @@ const Dashboard = ({ user, onLogout }) => {
       );
 
 
-      // --------------------------------------------------------
+      // ========================================================
       // CATEGORIES
-      // --------------------------------------------------------
+      // ========================================================
 
       const categoryData =
         categoriesRes?.data;
 
+
       const categoryList =
         Array.isArray(categoryData)
           ? categoryData
-          : Array.isArray(categoryData?.categories)
+          : Array.isArray(
+              categoryData?.categories
+            )
             ? categoryData.categories
-            : Array.isArray(categoryData?.data)
+            : Array.isArray(
+                categoryData?.data
+              )
               ? categoryData.data
               : [];
 
@@ -139,19 +374,24 @@ const Dashboard = ({ user, onLogout }) => {
       );
 
 
-      // --------------------------------------------------------
+      // ========================================================
       // ARTICLES
-      // --------------------------------------------------------
+      // ========================================================
 
       const articleData =
         articlesRes?.data;
 
+
       const articleList =
         Array.isArray(articleData)
           ? articleData
-          : Array.isArray(articleData?.articles)
+          : Array.isArray(
+              articleData?.articles
+            )
             ? articleData.articles
-            : Array.isArray(articleData?.data)
+            : Array.isArray(
+                articleData?.data
+              )
               ? articleData.data
               : [];
 
@@ -178,11 +418,16 @@ const Dashboard = ({ user, onLogout }) => {
 
     }
 
-  }, []);
+  }, [
+    user.role,
+    currentPage,
+    pageSize,
+    debouncedSearchTerm
+  ]);
 
 
   // ==========================================================
-  // INITIAL LOAD
+  // INITIAL LOAD / RELOAD
   // ==========================================================
 
   useEffect(() => {
@@ -199,12 +444,8 @@ const Dashboard = ({ user, onLogout }) => {
   const selectedCategoryObject =
     categories.find(
       (category) =>
-        String(
-          category?._id
-        ) ===
-        String(
-          selectedCategory
-        )
+        String(category?._id) ===
+        String(selectedCategory)
     );
 
 
@@ -214,8 +455,7 @@ const Dashboard = ({ user, onLogout }) => {
 
   const isMaintenance =
     String(
-      selectedCategoryObject?.name ||
-      ''
+      selectedCategoryObject?.name || ''
     )
       .trim()
       .toLowerCase() ===
@@ -248,68 +488,16 @@ const Dashboard = ({ user, onLogout }) => {
   // EXPORT REQUESTS TO EXCEL
   // ==========================================================
 
-  const exportRequestsToExcel = async () => {
-
-    if (!user || user.role !== 'admin') {
-
-      toast.error(
-        'Seul un administrateur peut exporter les demandes.'
-      );
-
-      return;
-    }
-
-
-    if (auditLoading) {
-      return;
-    }
-
-
-    setAuditLoading(true);
-
-
-    try {
-
-      // ========================================================
-      // GET ALL REQUESTS
-      //
-      // IMPORTANT:
-      // /requests/export returns ALL needrequests,
-      // including soft-deleted requests.
-      // ========================================================
-
-      const response =
-        await API.get(
-          '/requests/export'
-        );
-
-
-      const data =
-        response.data;
-
-
-      const requests =
-        Array.isArray(data)
-          ? data
-          : Array.isArray(data?.requests)
-            ? data.requests
-            : Array.isArray(data?.data)
-              ? data.data
-              : [];
-
-
-      console.log(
-        'REQUESTS FOR EXCEL:',
-        requests
-      );
-
+  const exportRequestsToExcel =
+    async () => {
 
       if (
-        requests.length === 0
+        !user ||
+        user.role !== 'admin'
       ) {
 
-        toast.info(
-          'Aucune demande à exporter.'
+        toast.error(
+          'Seul un administrateur peut exporter les demandes.'
         );
 
         return;
@@ -317,370 +505,396 @@ const Dashboard = ({ user, onLogout }) => {
       }
 
 
-      // ========================================================
-      // EXCEL DATA
-      // ========================================================
-
-      const excelData =
-        requests.map(
-          (request) => {
-
-            const employee =
-              request?.employee ||
-              request?.user?.name ||
-              request?.user?.fullName ||
-              request?.user?.email ||
-              '—';
+      if (auditLoading) {
+        return;
+      }
 
 
-            const employeeEmail =
-              request?.employeeEmail ||
-              request?.user?.email ||
-              '—';
+      setAuditLoading(true);
 
 
-            const category =
-              request?.category ||
-              request?.categoryName ||
-              request?.category?.name ||
-              '—';
+      try {
+
+        const response =
+          await API.get(
+            '/requests/export'
+          );
 
 
-            const article =
-              request?.article?.name ||
-              (
-                typeof request?.article === 'string'
-                  ? request.article
-                  : ''
-              );
+        const data =
+          response.data;
 
 
-            const customItem =
-              request?.customItem || '';
+        const requests =
+          Array.isArray(data)
+            ? data
+            : Array.isArray(
+                data?.requests
+              )
+              ? data.requests
+              : Array.isArray(
+                  data?.data
+                )
+                ? data.data
+                : [];
 
 
-            return {
+        if (
+          requests.length === 0
+        ) {
 
-              'Date de création':
-                formatDate(
-                  request?.createdAt
-                ),
+          toast.info(
+            'Aucune demande à exporter.'
+          );
 
-              'Employé':
-                employee,
+          return;
 
-              'Email':
-                employeeEmail,
+        }
 
-              'Catégorie':
-                category,
 
-              'Article':
-                article || '—',
+        const excelData =
+          requests.map(
+            (request) => {
 
-              'Besoin personnalisé':
-                customItem || '—',
+              const employee =
+                request?.employee ||
+                request?.user?.name ||
+                request?.user?.fullName ||
+                request?.user?.email ||
+                '—';
 
-              'Description':
-                request?.description || '—',
 
-              'Quantité':
-                request?.quantity ?? 0,
+              const employeeEmail =
+                request?.employeeEmail ||
+                request?.user?.email ||
+                '—';
 
-              'Statut':
-                request?.status || '—',
 
-              'Date de suppression':
-                formatDate(
-                  request?.deletedAt
-                ),
-
-              'Supprimée par':
-                request?.deletedBy?.name ||
-                request?.deletedByName ||
+              const category =
+                request?.categoryName ||
+                request?.category?.name ||
                 (
-                  typeof request?.deletedBy === 'string'
-                    ? request.deletedBy
+                  typeof request?.category ===
+                  'string'
+                    ? request.category
                     : ''
                 ) ||
-                '—',
+                '—';
 
-              'Dernière modification':
-                formatDate(
-                  request?.updatedAt
-                )
 
-            };
+              const article =
+                request?.article?.name ||
+                (
+                  typeof request?.article ===
+                  'string'
+                    ? request.article
+                    : ''
+                );
 
-          }
+
+              const customItem =
+                request?.customItem ||
+                '';
+
+
+              return {
+
+                'Date de création':
+                  formatDate(
+                    request?.createdAt
+                  ),
+
+                'Employé':
+                  employee,
+
+                'Email':
+                  employeeEmail,
+
+                'Catégorie':
+                  category,
+
+                'Article':
+                  article || '—',
+
+                'Besoin personnalisé':
+                  customItem || '—',
+
+                'Description':
+                  request?.description ||
+                  '—',
+
+                'Quantité':
+                  request?.quantity ?? 0,
+
+                'Statut':
+                  request?.status || '—',
+
+                'Date de suppression':
+                  formatDate(
+                    request?.deletedAt
+                  ),
+
+                'Supprimée par':
+                  request?.deletedBy?.name ||
+                  request?.deletedByName ||
+                  (
+                    typeof request?.deletedBy ===
+                    'string'
+                      ? request.deletedBy
+                      : ''
+                  ) ||
+                  '—',
+
+                'Dernière modification':
+                  formatDate(
+                    request?.updatedAt
+                  )
+
+              };
+
+            }
+          );
+
+
+        const worksheet =
+          XLSX.utils.json_to_sheet(
+            excelData
+          );
+
+
+        worksheet['!cols'] = [
+
+          { wch: 22 },
+          { wch: 25 },
+          { wch: 35 },
+          { wch: 25 },
+          { wch: 30 },
+          { wch: 30 },
+          { wch: 45 },
+          { wch: 12 },
+          { wch: 18 },
+          { wch: 22 },
+          { wch: 25 },
+          { wch: 25 }
+
+        ];
+
+
+        const workbook =
+          XLSX.utils.book_new();
+
+
+        XLSX.utils.book_append_sheet(
+          workbook,
+          worksheet,
+          'Demandes'
         );
 
 
-      const worksheet =
-        XLSX.utils.json_to_sheet(
-          excelData
+        const today =
+          new Date()
+            .toISOString()
+            .slice(0, 10);
+
+
+        XLSX.writeFile(
+          workbook,
+          `ATEA_Demandes_${today}.xlsx`
         );
 
 
-      worksheet['!cols'] = [
-
-        { wch: 22 }, // Date de création
-        { wch: 25 }, // Employé
-        { wch: 35 }, // Email
-        { wch: 25 }, // Catégorie
-        { wch: 30 }, // Article
-        { wch: 30 }, // Besoin personnalisé
-        { wch: 45 }, // Description
-        { wch: 12 }, // Quantité
-        { wch: 18 }, // Statut
-        { wch: 22 }, // Date de suppression
-        { wch: 25 }, // Supprimée par
-        { wch: 25 }  // Dernière modification
-
-      ];
+        toast.success(
+          'Export Excel des demandes effectué avec succès.'
+        );
 
 
-      // ========================================================
-      // CREATE WORKBOOK
-      // ========================================================
+      } catch (err) {
 
-      const workbook =
-        XLSX.utils.book_new();
+        console.error(
+          'Erreur export demandes Excel:',
+          err
+        );
 
+        toast.error(
+          err.response?.data?.message ||
+          'Erreur lors de l’export des demandes.'
+        );
 
-      XLSX.utils.book_append_sheet(
-        workbook,
-        worksheet,
-        'Demandes'
-      );
+      } finally {
 
+        setAuditLoading(false);
 
-      // ========================================================
-      // FILE NAME
-      // ========================================================
+      }
 
-      const today =
-        new Date()
-          .toISOString()
-          .slice(0, 10);
-
-
-      XLSX.writeFile(
-        workbook,
-        `ATEA_Demandes_${today}.xlsx`
-      );
-
-
-      toast.success(
-        'Export Excel des demandes effectué avec succès.'
-      );
-
-
-    } catch (err) {
-
-      console.error(
-        'Erreur export demandes Excel:',
-        err
-      );
-
-
-      toast.error(
-        err.response?.data?.message ||
-        'Erreur lors de l’export des demandes.'
-      );
-
-
-    } finally {
-
-      setAuditLoading(false);
-
-    }
-
-  };
+    };
 
 
   // ==========================================================
   // ADD REQUEST
   // ==========================================================
 
-  const handleAddRequest = async (e) => {
+  const handleAddRequest =
+    async (e) => {
 
-    e.preventDefault();
-
-
-    if (loading) {
-      return;
-    }
+      e.preventDefault();
 
 
-    if (!selectedCategory) {
-
-      toast.warn(
-        'Veuillez sélectionner une catégorie.'
-      );
-
-      return;
-    }
-
-
-    // --------------------------------------------------------
-    // QUANTITY
-    // --------------------------------------------------------
-
-    const numericQuantity =
-      Number(quantity);
-
-
-    if (
-      !Number.isInteger(
-        numericQuantity
-      ) ||
-      numericQuantity <= 0
-    ) {
-
-      toast.warn(
-        'La quantité doit être un nombre entier supérieur à 0.'
-      );
-
-      return;
-    }
-
-
-    // --------------------------------------------------------
-    // MAINTENANCE
-    // --------------------------------------------------------
-
-    if (isMaintenance) {
-
-      if (
-        !customItem.trim()
-      ) {
-
-        toast.warn(
-          'Pour la catégorie Maintenance, veuillez préciser le besoin.'
-        );
-
+      if (loading) {
         return;
       }
 
-    } else {
 
-      // ------------------------------------------------------
-      // ARTICLE / CUSTOM ITEM XOR
-      // ------------------------------------------------------
-
-      const hasArticle =
-        Boolean(
-          selectedArticle
-        );
-
-
-      const hasCustomItem =
-        Boolean(
-          customItem.trim()
-        );
-
-
-      if (
-        (hasArticle && hasCustomItem) ||
-        (!hasArticle && !hasCustomItem)
-      ) {
+      if (!selectedCategory) {
 
         toast.warn(
-          'Veuillez sélectionner un article OU saisir un article personnalisé.'
+          'Veuillez sélectionner une catégorie.'
         );
 
         return;
+
       }
 
-    }
+
+      const numericQuantity =
+        Number(quantity);
 
 
-    setLoading(true);
-
-
-    try {
-
-      const payload = {
-
-        category:
-          selectedCategory,
-
-        article:
-          isMaintenance
-            ? null
-            : selectedArticle ||
-              null,
-
-        customItem:
-          customItem.trim()
-            ? customItem.trim()
-            : null,
-
-        description:
-          'Besoin exprimé via le portail ATEA',
-
-        quantity:
+      if (
+        !Number.isInteger(
           numericQuantity
+        ) ||
+        numericQuantity <= 0
+      ) {
 
-      };
+        toast.warn(
+          'La quantité doit être un nombre entier supérieur à 0.'
+        );
 
+        return;
 
-      console.log(
-        'REQUEST PAYLOAD:',
-        payload
-      );
-
-
-      await API.post(
-        '/requests',
-        payload
-      );
+      }
 
 
-      toast.success(
-        'Demande ajoutée avec succès.'
-      );
+      if (isMaintenance) {
+
+        if (
+          !customItem.trim()
+        ) {
+
+          toast.warn(
+            'Pour la catégorie Maintenance, veuillez préciser le besoin.'
+          );
+
+          return;
+
+        }
+
+      } else {
+
+        const hasArticle =
+          Boolean(
+            selectedArticle
+          );
 
 
-      // --------------------------------------------------------
-      // RESET FORM
-      // --------------------------------------------------------
-
-      setSelectedCategory('');
-      setSelectedArticle('');
-      setCustomItem('');
-      setQuantity(1);
+        const hasCustomItem =
+          Boolean(
+            customItem.trim()
+          );
 
 
-      // --------------------------------------------------------
-      // REFRESH DATA
-      // --------------------------------------------------------
+        if (
+          (hasArticle && hasCustomItem) ||
+          (!hasArticle && !hasCustomItem)
+        ) {
 
-      await fetchData();
+          toast.warn(
+            'Veuillez sélectionner un article OU saisir un article personnalisé.'
+          );
 
+          return;
 
-    } catch (err) {
+        }
 
-      console.error(
-        'Erreur lors de l’ajout',
-        err
-      );
-
-
-      toast.error(
-        err.response?.data?.message ||
-        'Erreur lors de l’ajout.'
-      );
+      }
 
 
-    } finally {
+      setLoading(true);
 
-      setLoading(false);
 
-    }
+      try {
 
-  };
+        const payload = {
+
+          category:
+            selectedCategory,
+
+          article:
+            isMaintenance
+              ? null
+              : selectedArticle ||
+                null,
+
+          customItem:
+            customItem.trim()
+              ? customItem.trim()
+              : null,
+
+          description:
+            'Besoin exprimé via le portail ATEA',
+
+          quantity:
+            numericQuantity
+
+        };
+
+
+        await API.post(
+          '/requests',
+          payload
+        );
+
+
+        toast.success(
+          'Demande ajoutée avec succès.'
+        );
+
+
+        setSelectedCategory('');
+        setSelectedArticle('');
+        setCustomItem('');
+        setQuantity(1);
+
+
+        if (user.role === 'admin') {
+
+          setCurrentPage(1);
+
+        }
+
+
+        await fetchData();
+
+
+      } catch (err) {
+
+        console.error(
+          'Erreur lors de l’ajout',
+          err
+        );
+
+        toast.error(
+          err.response?.data?.message ||
+          'Erreur lors de l’ajout.'
+        );
+
+      } finally {
+
+        setLoading(false);
+
+      }
+
+    };
 
 
   // ==========================================================
@@ -722,7 +936,6 @@ const Dashboard = ({ user, onLogout }) => {
           'Erreur mise à jour statut',
           err
         );
-
 
         toast.error(
           err.response?.data?.message ||
@@ -768,7 +981,6 @@ const Dashboard = ({ user, onLogout }) => {
           'Erreur suppression',
           err
         );
-
 
         toast.error(
           err.response?.data?.message ||
@@ -920,10 +1132,6 @@ const Dashboard = ({ user, onLogout }) => {
   const canDelete =
     (sub) => {
 
-      // --------------------------------------------------------
-      // ADMIN
-      // --------------------------------------------------------
-
       if (
         user.role ===
         'admin'
@@ -933,11 +1141,6 @@ const Dashboard = ({ user, onLogout }) => {
 
       }
 
-
-      // --------------------------------------------------------
-      // EMPLOYEE
-      // Own request + En attente only
-      // --------------------------------------------------------
 
       const isOwnRequest =
         String(
@@ -980,9 +1183,9 @@ const Dashboard = ({ user, onLogout }) => {
           .toLowerCase();
 
 
-      // --------------------------------------------------------
+      // ======================================================
       // EN ATTENTE → VALIDÉ
-      // --------------------------------------------------------
+      // ======================================================
 
       if (
         normalizedStatus ===
@@ -1026,9 +1229,9 @@ const Dashboard = ({ user, onLogout }) => {
       }
 
 
-      // --------------------------------------------------------
+      // ======================================================
       // VALIDÉ → LIVRÉ
-      // --------------------------------------------------------
+      // ======================================================
 
       if (
         normalizedStatus ===
@@ -1069,9 +1272,9 @@ const Dashboard = ({ user, onLogout }) => {
       }
 
 
-      // --------------------------------------------------------
+      // ======================================================
       // LIVRÉ
-      // --------------------------------------------------------
+      // ======================================================
 
       if (
         normalizedStatus ===
@@ -1106,138 +1309,6 @@ const Dashboard = ({ user, onLogout }) => {
 
 
   // ==========================================================
-  // SEARCH
-  // ==========================================================
-
-  const filteredSubmissions =
-    submissions.filter(
-      (sub) => {
-
-        const search =
-          searchTerm
-            .trim()
-            .toLowerCase();
-
-
-        if (!search) {
-          return true;
-        }
-
-
-        const empName =
-          getEmployeeName(
-            sub
-          ).toLowerCase();
-
-
-        const category =
-          getCategoryName(
-            sub.category
-          ).toLowerCase();
-
-
-        const item =
-          getRequestItem(
-            sub
-          ).toLowerCase();
-
-
-        const description =
-          String(
-            sub.description ||
-            ''
-          ).toLowerCase();
-
-
-        const status =
-          String(
-            sub.status ||
-            ''
-          ).toLowerCase();
-
-
-        return (
-
-          empName.includes(
-            search
-          ) ||
-
-          category.includes(
-            search
-          ) ||
-
-          item.includes(
-            search
-          ) ||
-
-          description.includes(
-            search
-          ) ||
-
-          status.includes(
-            search
-          )
-
-        );
-
-      }
-    );
-
-
-  // ==========================================================
-  // GROUP REQUESTS FOR ADMIN
-  // ==========================================================
-
-  const groupedRequests = {};
-
-
-  if (
-    user.role ===
-    'admin'
-  ) {
-
-    filteredSubmissions.forEach(
-      (sub) => {
-
-        const empName =
-          getEmployeeName(
-            sub
-          );
-
-
-        if (
-          !groupedRequests[
-            empName
-          ]
-        ) {
-
-          groupedRequests[
-            empName
-          ] = {
-
-            employee:
-              sub.user,
-
-            subs: []
-
-          };
-
-        }
-
-
-        groupedRequests[
-          empName
-        ].subs.push(
-          sub
-        );
-
-      }
-    );
-
-  }
-
-
-  // ==========================================================
   // RENDER
   // ==========================================================
 
@@ -1245,9 +1316,9 @@ const Dashboard = ({ user, onLogout }) => {
 
     <div className="dashboard-container">
 
-      {/* ==================================================== */}
-      {/* HEADER                                               */}
-      {/* ==================================================== */}
+      {/* =====================================================
+          HEADER
+      ===================================================== */}
 
       <header className="dashboard-header">
 
@@ -1339,15 +1410,11 @@ const Dashboard = ({ user, onLogout }) => {
       </header>
 
 
-      {/* ==================================================== */}
-      {/* MAIN                                                 */}
-      {/* ==================================================== */}
+      {/* =====================================================
+          MAIN
+      ===================================================== */}
 
       <main className="dashboard-content">
-
-        {/* ================================================== */}
-        {/* ADMIN                                              */}
-        {/* ================================================== */}
 
         {user.role === 'admin' ? (
 
@@ -1366,9 +1433,9 @@ const Dashboard = ({ user, onLogout }) => {
             </div>
 
 
-            {/* ================================================= */}
-            {/* ADMIN FORM                                        */}
-            {/* ================================================= */}
+            {/* =================================================
+                ADMIN FORM
+            ================================================= */}
 
             <form
               onSubmit={
@@ -1406,8 +1473,6 @@ const Dashboard = ({ user, onLogout }) => {
                     '15px'
                 }}
               >
-
-                {/* CATEGORY */}
 
                 <div>
 
@@ -1484,8 +1549,6 @@ const Dashboard = ({ user, onLogout }) => {
 
                 </div>
 
-
-                {/* ARTICLE / CUSTOM ITEM */}
 
                 <div>
 
@@ -1564,8 +1627,7 @@ const Dashboard = ({ user, onLogout }) => {
                             );
 
                             if (
-                              e.target
-                                .value
+                              e.target.value
                             ) {
 
                               setCustomItem(
@@ -1627,9 +1689,7 @@ const Dashboard = ({ user, onLogout }) => {
                             );
 
                             if (
-                              e.target
-                                .value
-                                .trim()
+                              e.target.value.trim()
                             ) {
 
                               setSelectedArticle(
@@ -1663,8 +1723,6 @@ const Dashboard = ({ user, onLogout }) => {
 
                 </div>
 
-
-                {/* QUANTITY */}
 
                 <div>
 
@@ -1743,9 +1801,9 @@ const Dashboard = ({ user, onLogout }) => {
             </form>
 
 
-            {/* ================================================= */}
-            {/* SEARCH + EXCEL                                    */}
-            {/* ================================================= */}
+            {/* =================================================
+                SEARCH + EXCEL
+            ================================================= */}
 
             <div
               className="search-bar-container"
@@ -1761,33 +1819,23 @@ const Dashboard = ({ user, onLogout }) => {
               }}
             >
 
-              <input
-                type="text"
-                placeholder="Rechercher un employé ou un équipement..."
-                value={
-                  searchTerm
-                }
-                onChange={
-                  (e) =>
-                    setSearchTerm(
-                      e.target.value
-                    )
-                }
-                className="search-input"
-                style={{
-                  flex:
-                    1,
-                  padding:
-                    '10px',
-                  borderRadius:
-                    '6px',
-                  border:
-                    '1px solid #cbd5e0'
-                }}
-              />
+             <input
+  type="text"
+  placeholder="Rechercher un employé, un article ou une catégorie..."
+  value={searchTerm}
+  onChange={(e) => {
+    setSearchTerm(e.target.value);
+    setCurrentPage(1);
+  }}
+  className="search-input"
+  style={{
+    flex: 1,
+    padding: '10px',
+    borderRadius: '6px',
+    border: '1px solid #cbd5e0'
+  }}
+/>
 
-
-              {/* EXPORT EXCEL */}
 
               <button
                 type="button"
@@ -1830,448 +1878,734 @@ const Dashboard = ({ user, onLogout }) => {
             </div>
 
 
-            {/* ================================================= */}
-            {/* ADMIN REQUEST GROUPS                              */}
-            {/* ================================================= */}
+            {/* =================================================
+                ADMIN PAGINATION
+            ================================================= */}
 
             <div
-              className="grouped-admin-list"
               style={{
                 display:
                   'flex',
-                flexDirection:
-                  'column',
+                justifyContent:
+                  'space-between',
+                alignItems:
+                  'center',
+                flexWrap:
+                  'wrap',
                 gap:
-                  '20px'
+                  '12px',
+                marginBottom:
+                  '20px',
+                background:
+                  '#fff',
+                padding:
+                  '12px 15px',
+                borderRadius:
+                  '8px',
+                boxShadow:
+                  '0 2px 4px rgba(0,0,0,0.05)'
               }}
             >
 
-              {Object.keys(
-                groupedRequests
-              ).length === 0 ? (
+              <div
+                style={{
+                  display:
+                    'flex',
+                  alignItems:
+                    'center',
+                  gap:
+                    '8px',
+                  color:
+                    '#4a5568',
+                  fontSize:
+                    '13px'
+                }}
+              >
+
+                <span>
+                  Afficher par :
+                </span>
+
+
+                <select
+                  value={
+                    pageSize
+                  }
+                  onChange={
+                    (e) => {
+
+                      const newPageSize =
+                        Number(
+                          e.target.value
+                        );
+
+
+                      console.log(
+                        'PAGE SIZE SELECTED:',
+                        newPageSize
+                      );
+
+
+                      // IMPORTANT:
+                      // Only the user selection changes pageSize.
+                      // fetchData NEVER changes it from backend data.
+
+                      setPageSize(
+                        newPageSize
+                      );
+
+                      setCurrentPage(
+                        1
+                      );
+
+                    }
+                  }
+                  style={{
+                    padding:
+                      '6px 8px',
+                    borderRadius:
+                      '4px',
+                    border:
+                      '1px solid #cbd5e0'
+                  }}
+                >
+
+                  {getPageSizeOptions(
+                    totalRequests
+                  ).map(
+                    (size) => (
+
+                      <option
+                        key={
+                          size
+                        }
+                        value={
+                          size
+                        }
+                      >
+                        {size}
+                      </option>
+
+                    )
+                  )}
+
+                </select>
+
+
+                <span>
+                  {totalRequests} demande(s)
+                </span>
+
+              </div>
+
+
+              {/* =================================================
+                  PAGE NAVIGATION
+              ================================================= */}
+
+              {totalPages > 1 && (
 
                 <div
                   style={{
-                    background:
-                      '#fff',
-                    padding:
-                      '30px',
-                    textAlign:
+                    display:
+                      'flex',
+                    alignItems:
                       'center',
-                    borderRadius:
-                      '8px',
-                    color:
-                      '#a0aec0'
+                    gap:
+                      '5px',
+                    flexWrap:
+                      'wrap'
                   }}
                 >
-                  Aucun employé trouvé.
+
+                  {/* PREVIOUS */}
+
+                  <button
+                    type="button"
+                    disabled={
+                      currentPage === 1
+                    }
+                    onClick={() =>
+                      setCurrentPage(
+                        (page) =>
+                          Math.max(
+                            1,
+                            page - 1
+                          )
+                      )
+                    }
+                    style={{
+                      padding:
+                        '6px 10px',
+                      border:
+                        '1px solid #cbd5e0',
+                      borderRadius:
+                        '4px',
+                      background:
+                        currentPage === 1
+                          ? '#edf2f7'
+                          : '#fff',
+                      color:
+                        currentPage === 1
+                          ? '#a0aec0'
+                          : '#2d3748',
+                      cursor:
+                        currentPage === 1
+                          ? 'not-allowed'
+                          : 'pointer'
+                    }}
+                  >
+                    ← Précédent
+                  </button>
+
+
+                  {/* PAGE NUMBERS */}
+
+                  {(() => {
+
+                    const pages = [];
+
+                    const startPage =
+                      Math.max(
+                        1,
+                        currentPage - 2
+                      );
+
+                    const endPage =
+                      Math.min(
+                        totalPages,
+                        currentPage + 2
+                      );
+
+
+                    // FIRST PAGE + ELLIPSIS
+
+                    if (
+                      startPage > 1
+                    ) {
+
+                      pages.push(
+                        1
+                      );
+
+
+                      if (
+                        startPage > 2
+                      ) {
+
+                        pages.push(
+                          '...'
+                        );
+
+                      }
+
+                    }
+
+
+                    // CURRENT RANGE
+
+                    for (
+                      let page =
+                        startPage;
+                      page <=
+                      endPage;
+                      page++
+                    ) {
+
+                      pages.push(
+                        page
+                      );
+
+                    }
+
+
+                    // LAST PAGE + ELLIPSIS
+
+                    if (
+                      endPage <
+                      totalPages
+                    ) {
+
+                      if (
+                        endPage <
+                        totalPages - 1
+                      ) {
+
+                        pages.push(
+                          '...'
+                        );
+
+                      }
+
+                      pages.push(
+                        totalPages
+                      );
+
+                    }
+
+
+                    return pages.map(
+                      (
+                        page,
+                        index
+                      ) =>
+
+                        page ===
+                        '...' ? (
+
+                          <span
+                            key={
+                              `ellipsis-${index}`
+                            }
+                            style={{
+                              padding:
+                                '6px 4px',
+                              color:
+                                '#718096'
+                            }}
+                          >
+                            ...
+                          </span>
+
+                        ) : (
+
+                          <button
+                            key={
+                              page
+                            }
+                            type="button"
+                            onClick={() =>
+                              setCurrentPage(
+                                page
+                              )
+                            }
+                            style={{
+                              minWidth:
+                                '32px',
+                              padding:
+                                '6px 8px',
+                              border:
+                                '1px solid #cbd5e0',
+                              borderRadius:
+                                '4px',
+                              background:
+                                currentPage ===
+                                page
+                                  ? '#3182ce'
+                                  : '#fff',
+                              color:
+                                currentPage ===
+                                page
+                                  ? '#fff'
+                                  : '#2d3748',
+                              cursor:
+                                'pointer',
+                              fontWeight:
+                                currentPage ===
+                                page
+                                  ? '600'
+                                  : '400'
+                            }}
+                          >
+                            {page}
+                          </button>
+
+                        )
+
+                    );
+
+                  })()}
+
+
+                  {/* NEXT */}
+
+                  <button
+                    type="button"
+                    disabled={
+                      currentPage ===
+                      totalPages
+                    }
+                    onClick={() =>
+                      setCurrentPage(
+                        (page) =>
+                          Math.min(
+                            totalPages,
+                            page + 1
+                          )
+                      )
+                    }
+                    style={{
+                      padding:
+                        '6px 10px',
+                      border:
+                        '1px solid #cbd5e0',
+                      borderRadius:
+                        '4px',
+                      background:
+                        currentPage ===
+                        totalPages
+                          ? '#edf2f7'
+                          : '#fff',
+                      color:
+                        currentPage ===
+                        totalPages
+                          ? '#a0aec0'
+                          : '#2d3748',
+                      cursor:
+                        currentPage ===
+                        totalPages
+                          ? 'not-allowed'
+                          : 'pointer'
+                    }}
+                  >
+                    Suivant →
+                  </button>
+
                 </div>
 
-              ) : (
+              )}
 
-                Object.entries(
-                  groupedRequests
-                ).map(
-                  ([
-                    empName,
-                    { subs }
-                  ]) => (
+            </div>
 
-                    <div
-                      key={
-                        empName
-                      }
-                      style={{
-                        background:
-                          '#fff',
-                        borderRadius:
-                          '8px',
-                        boxShadow:
-                          '0 2px 4px rgba(0,0,0,0.05)',
-                        overflow:
-                          'hidden',
-                        border:
-                          '1px solid #e2e8f0'
-                      }}
-                    >
 
-                      <div
+            {/* =================================================
+                ADMIN REQUEST TABLE
+            ================================================= */}
+
+            <div
+              className="card list-card"
+              style={{
+                background:
+                  '#fff',
+                borderRadius:
+                  '8px',
+                boxShadow:
+                  '0 2px 4px rgba(0,0,0,0.05)',
+                overflowX:
+                  'auto',
+                border:
+                  '1px solid #e2e8f0'
+              }}
+            >
+
+              <table
+                style={{
+                  width:
+                    '100%',
+                  borderCollapse:
+                    'collapse',
+                  minWidth:
+                    '1150px'
+                }}
+              >
+
+                <thead>
+
+                  <tr
+                    style={{
+                      background:
+                        '#f7fafc',
+                      textAlign:
+                        'left',
+                      color:
+                        '#718096',
+                      fontSize:
+                        '13px',
+                      borderBottom:
+                        '1px solid #edf2f7'
+                    }}
+                  >
+
+                    <th style={{ padding: '12px' }}>
+                      Employé
+                    </th>
+
+                    <th style={{ padding: '12px' }}>
+                      Date de création
+                    </th>
+
+                    <th style={{ padding: '12px' }}>
+                      Dernière modification
+                    </th>
+
+                    <th style={{ padding: '12px' }}>
+                      Catégorie
+                    </th>
+
+                    <th style={{ padding: '12px' }}>
+                      Article demandé
+                    </th>
+
+                    <th style={{ padding: '12px' }}>
+                      Quantité
+                    </th>
+
+                    <th style={{ padding: '12px' }}>
+                      Statut
+                    </th>
+
+                    <th style={{ padding: '12px' }}>
+                      Actions
+                    </th>
+
+                  </tr>
+
+                </thead>
+
+
+                <tbody>
+
+                  {submissions.length === 0 ? (
+
+                    <tr>
+
+                      <td
+                        colSpan="8"
                         style={{
-                          background:
-                            '#f7fafc',
                           padding:
-                            '15px 20px',
-                          borderBottom:
-                            '1px solid #e2e8f0',
-                          display:
-                            'flex',
-                          justifyContent:
-                            'space-between',
-                          alignItems:
-                            'center'
+                            '30px',
+                          textAlign:
+                            'center',
+                          color:
+                            '#a0aec0'
                         }}
                       >
+                        {debouncedSearchTerm
+                          ? 'Aucune demande ne correspond à votre recherche.'
+                          : 'Aucune demande enregistrée.'}
+                      </td>
 
-                        <h3
-                          style={{
-                            margin:
-                              0,
-                            color:
-                              '#2d3748',
-                            fontSize:
-                              '16px'
-                          }}
-                        >
-                          👤 {empName}
-                        </h3>
+                    </tr>
 
+                  ) : (
 
-                        <span
-                          style={{
-                            background:
-                              '#e2e8f0',
-                            color:
-                              '#4a5568',
-                            padding:
-                              '4px 10px',
-                            borderRadius:
-                              '12px',
-                            fontSize:
-                              '12px',
-                            fontWeight:
-                              'bold'
-                          }}
-                        >
-                          {subs.length} demande(s)
-                        </span>
+                    submissions.map(
+                      (sub) => {
 
-                      </div>
+                        const normalizedStatus =
+                          String(
+                            sub.status || ''
+                          )
+                            .trim()
+                            .toLowerCase();
 
 
-                      <div
-                        style={{
-                          padding:
-                            '0 20px 15px 20px',
-                          overflowX:
-                            'auto'
-                        }}
-                      >
+                        const isDelivered =
+                          normalizedStatus ===
+                          'livré';
 
-                        <table
-                          style={{
-                            width:
-                              '100%',
-                            borderCollapse:
-                              'collapse',
-                            marginTop:
-                              '10px'
-                          }}
-                        >
 
-                          <thead>
+                        return (
 
-                            <tr
+                          <tr
+                            key={
+                              sub._id
+                            }
+                            style={{
+                              borderBottom:
+                                '1px solid #edf2f7'
+                            }}
+                          >
+
+                            <td
                               style={{
-                                textAlign:
-                                  'left',
+                                padding:
+                                  '10px',
+                                fontWeight:
+                                  '600',
                                 color:
-                                  '#718096',
+                                  '#2d3748'
+                              }}
+                            >
+                              {getEmployeeName(
+                                sub
+                              )}
+                            </td>
+
+
+                            <td
+                              style={{
+                                padding:
+                                  '10px',
                                 fontSize:
-                                  '13px',
-                                borderBottom:
-                                  '1px solid #edf2f7'
+                                  '12px',
+                                color:
+                                  '#4a5568',
+                                whiteSpace:
+                                  'nowrap'
+                              }}
+                            >
+                              {formatDate(
+                                sub.createdAt
+                              )}
+                            </td>
+
+
+                            <td
+                              style={{
+                                padding:
+                                  '10px',
+                                fontSize:
+                                  '12px',
+                                color:
+                                  '#4a5568',
+                                whiteSpace:
+                                  'nowrap'
+                              }}
+                            >
+                              {formatDate(
+                                sub.updatedAt
+                              )}
+                            </td>
+
+
+                            <td
+                              style={{
+                                padding:
+                                  '10px',
+                                color:
+                                  '#4a5568',
+                                fontSize:
+                                  '13px'
+                              }}
+                            >
+                              {getCategoryName(
+                                sub.category
+                              )}
+                            </td>
+
+
+                            <td
+                              style={{
+                                padding:
+                                  '10px',
+                                fontWeight:
+                                  '600'
+                              }}
+                            >
+                              {getRequestItem(
+                                sub
+                              )}
+                            </td>
+
+
+                            <td
+                              style={{
+                                padding:
+                                  '10px',
+                                fontWeight:
+                                  '600'
+                              }}
+                            >
+                              {sub.quantity ?? 1}
+                            </td>
+
+
+                            <td
+                              style={{
+                                padding:
+                                  '10px'
                               }}
                             >
 
-                              <th
+                              <span
                                 style={{
                                   padding:
-                                    '10px'
+                                    '4px 8px',
+                                  borderRadius:
+                                    '12px',
+                                  fontSize:
+                                    '11px',
+                                  fontWeight:
+                                    'bold',
+                                  background:
+                                    isDelivered
+                                      ? '#c6f6d5'
+                                      : normalizedStatus ===
+                                          'validé'
+                                        ? '#bee3f8'
+                                        : '#feebc8',
+                                  color:
+                                    isDelivered
+                                      ? '#22543d'
+                                      : normalizedStatus ===
+                                          'validé'
+                                        ? '#2c5282'
+                                        : '#c05621'
                                 }}
                               >
-                                Date de création
-                              </th>
+                                {sub.status}
+                              </span>
 
-                              <th
-                                style={{
-                                  padding:
-                                    '10px'
-                                }}
-                              >
-                                Dernière modification
-                              </th>
-
-                              <th
-                                style={{
-                                  padding:
-                                    '10px'
-                                }}
-                              >
-                                Catégorie
-                              </th>
-
-                              <th
-                                style={{
-                                  padding:
-                                    '10px'
-                                }}
-                              >
-                                Article demandé
-                              </th>
-
-                              <th
-                                style={{
-                                  padding:
-                                    '10px'
-                                }}
-                              >
-                                Quantité
-                              </th>
-
-                              <th
-                                style={{
-                                  padding:
-                                    '10px'
-                                }}
-                              >
-                                Statut
-                              </th>
-
-                              <th
-                                style={{
-                                  padding:
-                                    '10px'
-                                }}
-                              >
-                                Actions
-                              </th>
-
-                            </tr>
-
-                          </thead>
+                            </td>
 
 
-                          <tbody>
+                            <td
+                              style={{
+                                padding:
+                                  '10px',
+                                display:
+                                  'flex',
+                                gap:
+                                  '8px',
+                                alignItems:
+                                  'center',
+                                minWidth:
+                                  '230px'
+                              }}
+                            >
 
-                            {subs.map(
-                              (sub) => {
-
-                                const normalizedStatus =
-                                  String(
-                                    sub.status ||
-                                    ''
-                                  )
-                                    .trim()
-                                    .toLowerCase();
+                              {renderStatusActions(
+                                sub
+                              )}
 
 
-                                const isDelivered =
-                                  normalizedStatus ===
-                                  'livré';
+                              {canDelete(
+                                sub
+                              ) && (
 
-
-                                return (
-
-                                  <tr
-                                    key={
+                                <button
+                                  onClick={() =>
+                                    setDeleteTargetId(
                                       sub._id
-                                    }
-                                    style={{
-                                      borderBottom:
-                                        '1px solid #edf2f7'
-                                    }}
-                                  >
+                                    )
+                                  }
+                                  style={{
+                                    padding:
+                                      '6px 10px',
+                                    background:
+                                      '#e53e3e',
+                                    color:
+                                      '#fff',
+                                    border:
+                                      'none',
+                                    borderRadius:
+                                      '4px',
+                                    cursor:
+                                      'pointer',
+                                    fontSize:
+                                      '12px'
+                                  }}
+                                >
+                                  Supprimer
+                                </button>
 
-                                    <td
-                                      style={{
-                                        padding:
-                                          '10px',
-                                        fontSize:
-                                          '12px',
-                                        color:
-                                          '#4a5568',
-                                        whiteSpace:
-                                          'nowrap'
-                                      }}
-                                    >
-                                      {formatDate(
-                                        sub.createdAt
-                                      )}
-                                    </td>
+                              )}
 
+                            </td>
 
-                                    <td
-                                      style={{
-                                        padding:
-                                          '10px',
-                                        fontSize:
-                                          '12px',
-                                        color:
-                                          '#4a5568',
-                                        whiteSpace:
-                                          'nowrap'
-                                      }}
-                                    >
-                                      {formatDate(
-                                        sub.updatedAt
-                                      )}
-                                    </td>
+                          </tr>
 
+                        );
 
-                                    <td
-                                      style={{
-                                        padding:
-                                          '10px',
-                                        color:
-                                          '#4a5568',
-                                        fontSize:
-                                          '13px'
-                                      }}
-                                    >
-                                      {getCategoryName(
-                                        sub.category
-                                      )}
-                                    </td>
+                      }
+                    )
 
+                  )}
 
-                                    <td
-                                      style={{
-                                        padding:
-                                          '10px',
-                                        fontWeight:
-                                          '600'
-                                      }}
-                                    >
-                                      {getRequestItem(
-                                        sub
-                                      )}
-                                    </td>
+                </tbody>
 
-
-                                    <td
-                                      style={{
-                                        padding:
-                                          '10px',
-                                        fontWeight:
-                                          '600'
-                                      }}
-                                    >
-                                      {sub.quantity ?? 1}
-                                    </td>
-
-
-                                    <td
-                                      style={{
-                                        padding:
-                                          '10px'
-                                      }}
-                                    >
-
-                                      <span
-                                        style={{
-                                          padding:
-                                            '4px 8px',
-                                          borderRadius:
-                                            '12px',
-                                          fontSize:
-                                            '11px',
-                                          fontWeight:
-                                            'bold',
-                                          background:
-                                            isDelivered
-                                              ? '#c6f6d5'
-                                              : normalizedStatus ===
-                                                  'validé'
-                                                ? '#bee3f8'
-                                                : '#feebc8',
-                                          color:
-                                            isDelivered
-                                              ? '#22543d'
-                                              : normalizedStatus ===
-                                                  'validé'
-                                                ? '#2c5282'
-                                                : '#c05621'
-                                        }}
-                                      >
-                                        {
-                                          sub.status
-                                        }
-                                      </span>
-
-                                    </td>
-
-
-                                    <td
-                                      style={{
-                                        padding:
-                                          '10px',
-                                        display:
-                                          'flex',
-                                        gap:
-                                          '8px',
-                                        alignItems:
-                                          'center'
-                                      }}
-                                    >
-
-                                      {renderStatusActions(
-                                        sub
-                                      )}
-
-
-                                      {canDelete(
-                                        sub
-                                      ) && (
-
-                                        <button
-                                          onClick={() =>
-                                            setDeleteTargetId(
-                                              sub._id
-                                            )
-                                          }
-                                          style={{
-                                            padding:
-                                              '6px 10px',
-                                            background:
-                                              '#e53e3e',
-                                            color:
-                                              '#fff',
-                                            border:
-                                              'none',
-                                            borderRadius:
-                                              '4px',
-                                            cursor:
-                                              'pointer',
-                                            fontSize:
-                                              '12px'
-                                          }}
-                                        >
-                                          Supprimer
-                                        </button>
-
-                                      )}
-
-                                    </td>
-
-                                  </tr>
-
-                                );
-
-                              }
-                            )}
-
-                          </tbody>
-
-                        </table>
-
-                      </div>
-
-                    </div>
-
-                  )
-                )
-
-              )}
+              </table>
 
             </div>
 
@@ -2279,9 +2613,9 @@ const Dashboard = ({ user, onLogout }) => {
 
         ) : (
 
-          /* ================================================= */
-          /* EMPLOYEE                                          */
-          /* ================================================= */
+          /* =================================================
+             EMPLOYEE
+          ================================================= */
 
           <div className="employee-section">
 
@@ -2298,9 +2632,9 @@ const Dashboard = ({ user, onLogout }) => {
             </div>
 
 
-            {/* ================================================= */}
-            {/* EMPLOYEE FORM                                     */}
-            {/* ================================================= */}
+            {/* =================================================
+                EMPLOYEE FORM
+            ================================================= */}
 
             <form
               onSubmit={
@@ -2338,8 +2672,6 @@ const Dashboard = ({ user, onLogout }) => {
                     '15px'
                 }}
               >
-
-                {/* CATEGORY */}
 
                 <div>
 
@@ -2416,8 +2748,6 @@ const Dashboard = ({ user, onLogout }) => {
 
                 </div>
 
-
-                {/* ARTICLE */}
 
                 <div>
 
@@ -2496,8 +2826,7 @@ const Dashboard = ({ user, onLogout }) => {
                             );
 
                             if (
-                              e.target
-                                .value
+                              e.target.value
                             ) {
 
                               setCustomItem(
@@ -2559,9 +2888,7 @@ const Dashboard = ({ user, onLogout }) => {
                             );
 
                             if (
-                              e.target
-                                .value
-                                .trim()
+                              e.target.value.trim()
                             ) {
 
                               setSelectedArticle(
@@ -2595,8 +2922,6 @@ const Dashboard = ({ user, onLogout }) => {
 
                 </div>
 
-
-                {/* QUANTITY */}
 
                 <div>
 
@@ -2675,9 +3000,9 @@ const Dashboard = ({ user, onLogout }) => {
             </form>
 
 
-            {/* ================================================= */}
-            {/* EMPLOYEE REQUESTS                                 */}
-            {/* ================================================= */}
+            {/* =================================================
+                EMPLOYEE REQUESTS
+            ================================================= */}
 
             <div
               className="card list-card"
@@ -2700,8 +3025,7 @@ const Dashboard = ({ user, onLogout }) => {
               </h3>
 
 
-              {submissions.length ===
-              0 ? (
+              {submissions.length === 0 ? (
 
                 <p
                   style={{
@@ -2778,8 +3102,7 @@ const Dashboard = ({ user, onLogout }) => {
 
                         const normalizedStatus =
                           String(
-                            sub.status ||
-                            ''
+                            sub.status || ''
                           )
                             .trim()
                             .toLowerCase();
@@ -2995,9 +3318,9 @@ const Dashboard = ({ user, onLogout }) => {
       </main>
 
 
-      {/* ==================================================== */}
-      {/* DELETE CONFIRMATION MODAL                            */}
-      {/* ==================================================== */}
+      {/* ======================================================
+          DELETE CONFIRMATION MODAL
+      ====================================================== */}
 
       {deleteTargetId && (
 
