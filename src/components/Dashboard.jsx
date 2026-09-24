@@ -257,7 +257,7 @@ const Dashboard = ({ user, onLogout }) => {
 
     }
 
-  }, [user.role, currentPage, pageSize, debouncedSearchTerm]);
+  }, [currentPage, pageSize, debouncedSearchTerm]);
 
 
   // ==========================================================
